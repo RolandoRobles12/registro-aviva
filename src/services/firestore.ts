@@ -1,4 +1,4 @@
-// src/services/firestore.ts
+// src/services/firestore.ts - Fixed version
 import {
   collection,
   doc,
@@ -98,21 +98,17 @@ export class FirestoreService {
     try {
       const constraints: QueryConstraint[] = [];
 
-      // Apply filters
+      // Apply filters - Simplified to avoid complex composite indexes
       if (filters?.dateRange) {
         constraints.push(where('timestamp', '>=', Timestamp.fromDate(filters.dateRange.start)));
         constraints.push(where('timestamp', '<=', Timestamp.fromDate(filters.dateRange.end)));
-      }
-      if (filters?.kioskId) {
+      } else if (filters?.kioskId) {
         constraints.push(where('kioskId', '==', filters.kioskId));
-      }
-      if (filters?.productType) {
+      } else if (filters?.productType) {
         constraints.push(where('productType', '==', filters.productType));
-      }
-      if (filters?.checkInType) {
+      } else if (filters?.checkInType) {
         constraints.push(where('type', '==', filters.checkInType));
-      }
-      if (filters?.status) {
+      } else if (filters?.status) {
         constraints.push(where('status', '==', filters.status));
       }
 
@@ -135,8 +131,17 @@ export class FirestoreService {
         ...doc.data()
       })) as CheckIn[];
 
+      // Apply additional filters in memory if needed
+      let filteredCheckins = checkins;
+      
+      if (filters?.userName) {
+        filteredCheckins = filteredCheckins.filter(c => 
+          c.userName.toLowerCase().includes(filters.userName!.toLowerCase())
+        );
+      }
+
       return {
-        data: checkins,
+        data: filteredCheckins,
         total: 0, // Firestore doesn't provide total count efficiently
         page,
         limit: pageSize,
@@ -234,32 +239,47 @@ export class FirestoreService {
   }
 
   /**
-   * Get time off requests with filters
+   * Get time off requests with simplified filters
    */
   static async getTimeOffRequests(filters?: TimeOffFilters): Promise<TimeOffRequest[]> {
     try {
       const constraints: QueryConstraint[] = [];
 
+      // Only use one WHERE clause at a time to avoid index requirements
       if (filters?.status) {
         constraints.push(where('status', '==', filters.status));
-      }
-      if (filters?.type) {
+        constraints.push(orderBy('createdAt', 'desc'));
+      } else if (filters?.type) {
         constraints.push(where('type', '==', filters.type));
+        constraints.push(orderBy('createdAt', 'desc'));
+      } else {
+        constraints.push(orderBy('createdAt', 'desc'));
       }
-      if (filters?.dateRange) {
-        constraints.push(where('startDate', '>=', Timestamp.fromDate(filters.dateRange.start)));
-        constraints.push(where('endDate', '<=', Timestamp.fromDate(filters.dateRange.end)));
-      }
-
-      constraints.push(orderBy('createdAt', 'desc'));
 
       const q = query(collection(db, 'time_off_requests'), ...constraints);
       const querySnapshot = await getDocs(q);
 
-      return querySnapshot.docs.map(doc => ({
+      let requests = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as TimeOffRequest[];
+
+      // Apply additional filters in memory
+      if (filters?.userName) {
+        requests = requests.filter(r => 
+          r.userName.toLowerCase().includes(filters.userName!.toLowerCase())
+        );
+      }
+
+      if (filters?.dateRange) {
+        requests = requests.filter(r => {
+          const start = r.startDate.toDate();
+          const end = r.endDate.toDate();
+          return start >= filters.dateRange!.start && end <= filters.dateRange!.end;
+        });
+      }
+
+      return requests;
     } catch (error) {
       console.error('Error getting time off requests:', error);
       throw error;

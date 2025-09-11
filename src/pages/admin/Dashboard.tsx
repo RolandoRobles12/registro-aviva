@@ -1,7 +1,8 @@
+// src/pages/admin/Dashboard.tsx - Fixed version
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirestoreService } from '../../services/firestore';
-import { LoadingSpinner } from '../../components/ui';
+import { LoadingSpinner, Alert } from '../../components/ui';
 import { KPICards } from '../../components/admin/KPICards';
 import { RecentCheckIns } from '../../components/admin/RecentCheckIns';
 import { PendingRequests } from '../../components/admin/PendingRequests';
@@ -14,6 +15,7 @@ export default function AdminDashboard() {
   const [pendingRequests, setPendingRequests] = useState<TimeOffRequest[]>([]);
   const [kpis, setKPIs] = useState<SystemKPIs | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -22,12 +24,14 @@ export default function AdminDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
+      setError(null);
       
       // Get recent check-ins (last 24 hours)
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       
-      const [checkInsResult, timeOffRequests] = await Promise.all([
+      // Load data with error handling for each call
+      const [checkInsResult, timeOffRequests] = await Promise.allSettled([
         FirestoreService.getCheckIns({
           dateRange: {
             start: yesterday,
@@ -39,14 +43,31 @@ export default function AdminDashboard() {
         })
       ]);
 
-      setRecentCheckIns(checkInsResult.data);
-      setPendingRequests(timeOffRequests);
+      // Handle check-ins result
+      if (checkInsResult.status === 'fulfilled') {
+        setRecentCheckIns(checkInsResult.value.data);
+        
+        // Calculate KPIs from check-ins
+        const calculatedKPIs = calculateKPIs(checkInsResult.value.data);
+        setKPIs(calculatedKPIs);
+      } else {
+        console.error('Error loading check-ins:', checkInsResult.reason);
+        setRecentCheckIns([]);
+        setKPIs(getDefaultKPIs());
+      }
 
-      // Calculate KPIs
-      const calculatedKPIs = calculateKPIs(checkInsResult.data);
-      setKPIs(calculatedKPIs);
+      // Handle time off requests result
+      if (timeOffRequests.status === 'fulfilled') {
+        setPendingRequests(timeOffRequests.value);
+      } else {
+        console.error('Error loading time off requests:', timeOffRequests.reason);
+        setPendingRequests([]);
+      }
+
     } catch (error) {
       console.error('Error loading dashboard data:', error);
+      setError('Error cargando datos del dashboard');
+      setKPIs(getDefaultKPIs());
     } finally {
       setLoading(false);
     }
@@ -54,8 +75,13 @@ export default function AdminDashboard() {
 
   const calculateKPIs = (checkIns: CheckIn[]): SystemKPIs => {
     const totalCheckins = checkIns.length;
-    const onTimeCount = checkIns.filter(c => c.status === 'a_tiempo').length;
-    const validLocationCount = checkIns.filter(c => c.validationResults.locationValid).length;
+    
+    if (totalCheckins === 0) {
+      return getDefaultKPIs();
+    }
+
+    const onTimeCount = checkIns.filter(c => c.status === 'a_tiempo' || c.status === 'anticipado').length;
+    const validLocationCount = checkIns.filter(c => c.validationResults?.locationValid).length;
     const incidentCount = checkIns.filter(c => 
       c.status === 'retrasado' || c.status === 'ubicacion_invalida'
     ).length;
@@ -65,12 +91,20 @@ export default function AdminDashboard() {
 
     return {
       totalCheckins,
-      punctualityPercentage: totalCheckins > 0 ? (onTimeCount / totalCheckins) * 100 : 0,
-      locationAccuracyPercentage: totalCheckins > 0 ? (validLocationCount / totalCheckins) * 100 : 0,
+      punctualityPercentage: (onTimeCount / totalCheckins) * 100,
+      locationAccuracyPercentage: (validLocationCount / totalCheckins) * 100,
       totalIncidents: incidentCount,
       avgHoursWorked
     };
   };
+
+  const getDefaultKPIs = (): SystemKPIs => ({
+    totalCheckins: 0,
+    punctualityPercentage: 0,
+    locationAccuracyPercentage: 0,
+    totalIncidents: 0,
+    avgHoursWorked: 0
+  });
 
   if (loading) {
     return (
@@ -106,6 +140,16 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Error Alert */}
+      {error && (
+        <Alert
+          type="error"
+          message={error}
+          dismissible
+          onDismiss={() => setError(null)}
+        />
+      )}
+
       {/* KPI Cards */}
       {kpis && <KPICards kpis={kpis} />}
 
@@ -119,6 +163,16 @@ export default function AdminDashboard() {
         {/* Pending Requests */}
         <PendingRequests requests={pendingRequests} onUpdate={loadDashboardData} />
       </div>
+
+      {/* Debug info in development */}
+      {import.meta.env.DEV && (
+        <div className="bg-gray-100 rounded-lg p-4 text-xs text-gray-600">
+          <strong>Debug Info:</strong>
+          <br />Recent Check-ins: {recentCheckIns.length}
+          <br />Pending Requests: {pendingRequests.length}
+          <br />KPIs: {kpis ? 'Loaded' : 'Not loaded'}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+// src/components/layout/AdminSidebar.tsx - Complete version with all routes
 import React, { Fragment } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Dialog, Transition } from '@headlessui/react';

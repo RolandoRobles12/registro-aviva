@@ -7,7 +7,7 @@ import { AdminRoute } from './components/auth/AdminRoute';
 
 // Pages
 import Login from './pages/auth/Login';
-import CheckIn from './pages/employee/CheckIn';
+import SimpleCheckIn from './pages/employee/SimpleCheckIn';
 import TimeOffRequest from './pages/employee/TimeOffRequest';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminCheckIns from './pages/admin/CheckIns';
@@ -31,7 +31,17 @@ function App() {
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
             
-            {/* Employee routes */}
+            {/* Simple CheckIn route (without layout) */}
+            <Route 
+              path="/employee/checkin" 
+              element={
+                <ProtectedRoute>
+                  <SimpleCheckIn />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Other Employee routes (with layout) */}
             <Route
               path="/employee"
               element={
@@ -41,7 +51,6 @@ function App() {
               }
             >
               <Route index element={<Navigate to="/employee/checkin" replace />} />
-              <Route path="checkin" element={<CheckIn />} />
               <Route path="time-off" element={<TimeOffRequest />} />
             </Route>
 

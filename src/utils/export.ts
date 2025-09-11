@@ -1,3 +1,7 @@
+// src/utils/export.ts - Fixed version
+import { formatTimestamp } from './formatters';
+import { CHECK_IN_TYPES, CHECK_IN_STATUS } from './constants';
+
 export function exportToCSV<T extends Record<string, any>>(
   data: T[],
   filename: string,
@@ -29,7 +33,7 @@ export function exportToCSV<T extends Record<string, any>>(
   
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.download = `${filename}.csv`;
+  link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
   link.click();
   
   URL.revokeObjectURL(link.href);
@@ -44,9 +48,12 @@ export function generateReportData(
     'Usuario': checkIn.userName,
     'Kiosco': checkIn.kioskName,
     'Producto': checkIn.productType,
-    'Tipo': CHECK_IN_TYPES[checkIn.type as keyof typeof CHECK_IN_TYPES],
-    'Estado': CHECK_IN_STATUS[checkIn.status as keyof typeof CHECK_IN_STATUS],
-    'Distancia (m)': checkIn.validationResults.distanceFromKiosk,
+    'Tipo': CHECK_IN_TYPES[checkIn.type as keyof typeof CHECK_IN_TYPES] || checkIn.type,
+    'Estado': CHECK_IN_STATUS[checkIn.status as keyof typeof CHECK_IN_STATUS] || checkIn.status,
+    'Distancia (m)': checkIn.validationResults?.distanceFromKiosk || 0,
+    'Ubicación Válida': checkIn.validationResults?.locationValid ? 'Sí' : 'No',
+    'Latitud': checkIn.location?.latitude || '',
+    'Longitud': checkIn.location?.longitude || '',
     'Notas': checkIn.notes || ''
   }));
 }
