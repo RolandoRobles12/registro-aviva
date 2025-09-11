@@ -1,4 +1,4 @@
-// src/services/firestore.ts - Fixed version
+// src/services/firestore.ts - Servicio completo corregido
 import {
   collection,
   doc,
@@ -49,6 +49,8 @@ export class FirestoreService {
     photoUrl?: string
   ): Promise<string> {
     try {
+      console.log('Creating check-in for user:', userId);
+
       // Get user and kiosk data
       const [user, kiosk] = await Promise.all([
         this.getDocument<User>('users', userId),
@@ -79,6 +81,7 @@ export class FirestoreService {
       };
 
       const docRef = await addDoc(collection(db, 'checkins'), checkInData);
+      console.log('Check-in created with ID:', docRef.id);
       return docRef.id;
     } catch (error) {
       console.error('Error creating check-in:', error);
@@ -189,6 +192,8 @@ export class FirestoreService {
    */
   static async createTimeOffRequest(userId: string, formData: TimeOffFormData): Promise<string> {
     try {
+      console.log('Creating time off request for user:', userId);
+      
       const user = await this.getDocument<User>('users', userId);
       if (!user) throw new Error('Usuario no encontrado');
 
@@ -205,6 +210,7 @@ export class FirestoreService {
       };
 
       const docRef = await addDoc(collection(db, 'time_off_requests'), requestData);
+      console.log('Time off request created with ID:', docRef.id);
       return docRef.id;
     } catch (error) {
       console.error('Error creating time off request:', error);
@@ -289,24 +295,77 @@ export class FirestoreService {
   // ================== KIOSKS ==================
 
   /**
+   * Get all kiosks (active and inactive)
+   */
+  static async getAllKiosks(): Promise<Kiosk[]> {
+    try {
+      console.log('Loading all kiosks...');
+      
+      // Try with ordering first
+      try {
+        const q = query(
+          collection(db, 'kiosks'),
+          orderBy('name', 'asc')
+        );
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Kiosk[];
+      } catch (orderError) {
+        console.log('No orderBy index, trying simple query...');
+        // If orderBy fails, try without it
+        const q = query(collection(db, 'kiosks'));
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Kiosk[];
+      }
+    } catch (error) {
+      console.error('Error getting all kiosks:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get all active kiosks
    */
   static async getActiveKiosks(): Promise<Kiosk[]> {
     try {
+      console.log('Loading active kiosks...');
+      const allKiosks = await this.getAllKiosks();
+      return allKiosks.filter(kiosk => kiosk.status === 'active');
+    } catch (error) {
+      console.error('Error getting active kiosks:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get kiosk by custom ID (not document ID)
+   */
+  static async getKioskById(kioskId: string): Promise<Kiosk | null> {
+    try {
       const q = query(
         collection(db, 'kiosks'),
-        where('status', '==', 'active'),
-        orderBy('name')
+        where('id', '==', kioskId)
       );
-
+      
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
+      
+      if (querySnapshot.empty) {
+        return null;
+      }
+      
+      const doc = querySnapshot.docs[0];
+      return {
         id: doc.id,
         ...doc.data()
-      })) as Kiosk[];
+      } as Kiosk;
     } catch (error) {
-      console.error('Error getting kiosks:', error);
-      throw error;
+      console.error('Error getting kiosk by ID:', error);
+      return null;
     }
   }
 
@@ -315,25 +374,45 @@ export class FirestoreService {
    */
   static async saveKiosk(kioskData: Omit<Kiosk, 'createdAt' | 'updatedAt'>): Promise<string> {
     try {
-      if (kioskData.id) {
-        // Update existing
-        await updateDoc(doc(db, 'kiosks', kioskData.id), {
+      console.log('Saving kiosk:', kioskData);
+
+      // Validar datos requeridos
+      if (!kioskData.id || !kioskData.name || !kioskData.city || !kioskData.state) {
+        throw new Error('Faltan campos requeridos: id, name, city, state');
+      }
+
+      if (!kioskData.coordinates || 
+          typeof kioskData.coordinates.latitude !== 'number' || 
+          typeof kioskData.coordinates.longitude !== 'number') {
+        throw new Error('Coordenadas inválidas');
+      }
+
+      // Verificar si ya existe un kiosko con ese ID
+      const existingKiosk = await this.getKioskById(kioskData.id);
+      
+      if (existingKiosk) {
+        // Actualizar kiosko existente
+        console.log('Updating existing kiosk:', kioskData.id);
+        const kioskRef = doc(db, 'kiosks', existingKiosk.id);
+        await updateDoc(kioskRef, {
           ...kioskData,
           updatedAt: serverTimestamp()
         });
-        return kioskData.id;
+        return existingKiosk.id;
       } else {
-        // Create new
+        // Crear nuevo kiosko
+        console.log('Creating new kiosk:', kioskData.id);
         const docRef = await addDoc(collection(db, 'kiosks'), {
           ...kioskData,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+        console.log('Kiosk created with document ID:', docRef.id);
         return docRef.id;
       }
     } catch (error) {
       console.error('Error saving kiosk:', error);
-      throw error;
+      throw new Error(`Error guardando kiosko: ${error.message}`);
     }
   }
 
@@ -342,22 +421,44 @@ export class FirestoreService {
    */
   static async batchImportKiosks(kiosks: Omit<Kiosk, 'createdAt' | 'updatedAt'>[]): Promise<void> {
     try {
+      console.log(`Starting batch import of ${kiosks.length} kiosks...`);
+      
       const batch = writeBatch(db);
       const timestamp = serverTimestamp();
 
-      kiosks.forEach(kioskData => {
-        const docRef = doc(collection(db, 'kiosks'));
-        batch.set(docRef, {
-          ...kioskData,
-          createdAt: timestamp,
-          updatedAt: timestamp
-        });
-      });
+      for (const kioskData of kiosks) {
+        // Validar cada kiosko
+        if (!kioskData.id || !kioskData.name || !kioskData.coordinates) {
+          console.warn('Skipping invalid kiosk:', kioskData);
+          continue;
+        }
+
+        // Verificar si ya existe
+        const existing = await this.getKioskById(kioskData.id);
+        
+        if (existing) {
+          // Actualizar existente
+          const kioskRef = doc(db, 'kiosks', existing.id);
+          batch.update(kioskRef, {
+            ...kioskData,
+            updatedAt: timestamp
+          });
+        } else {
+          // Crear nuevo
+          const docRef = doc(collection(db, 'kiosks'));
+          batch.set(docRef, {
+            ...kioskData,
+            createdAt: timestamp,
+            updatedAt: timestamp
+          });
+        }
+      }
 
       await batch.commit();
+      console.log('Batch import completed successfully');
     } catch (error) {
-      console.error('Error batch importing kiosks:', error);
-      throw error;
+      console.error('Error in batch import:', error);
+      throw new Error(`Error importando kioscos: ${error.message}`);
     }
   }
 

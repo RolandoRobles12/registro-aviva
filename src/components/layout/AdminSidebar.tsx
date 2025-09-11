@@ -1,4 +1,4 @@
-// src/components/layout/AdminSidebar.tsx - Complete version with all routes
+// src/components/layout/AdminSidebar.tsx - Versión con iconos tamaño correcto
 import React, { Fragment } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Dialog, Transition } from '@headlessui/react';
@@ -13,7 +13,6 @@ import {
   UsersIcon,
   Cog6ToothIcon
 } from '@heroicons/react/24/outline';
-import { clsx } from 'clsx';
 
 interface AdminSidebarProps {
   isMobile?: boolean;
@@ -78,7 +77,7 @@ export function AdminSidebar({ isMobile = false, isOpen = false, onClose }: Admi
         {onClose && (
           <button
             type="button"
-            className="text-white hover:text-gray-200"
+            className="text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-600 rounded-md p-1"
             onClick={onClose}
           >
             <XMarkIcon className="h-6 w-6" />
@@ -92,18 +91,27 @@ export function AdminSidebar({ isMobile = false, isOpen = false, onClose }: Admi
           <NavLink
             key={item.name}
             to={item.href}
-            className={({ isActive }) =>
-              clsx(
-                'group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors',
-                isActive
-                  ? 'bg-primary-100 text-primary-700'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              )
-            }
             onClick={onClose}
+            className={({ isActive }) => 
+              `group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors duration-150 ${
+                isActive
+                  ? 'bg-primary-100 text-primary-700 border-r-2 border-primary-700'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`
+            }
           >
-            <item.icon className="mr-3 h-6 w-6" />
-            {item.name}
+            {({ isActive }) => (
+              <>
+                <item.icon 
+                  className={`mr-3 h-4 w-4 flex-shrink-0 ${
+                    isActive 
+                      ? 'text-primary-600' 
+                      : 'text-gray-400 group-hover:text-gray-500'
+                  }`} 
+                />
+                {item.name}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -121,7 +129,7 @@ export function AdminSidebar({ isMobile = false, isOpen = false, onClose }: Admi
   if (isMobile) {
     return (
       <Transition.Root show={isOpen} as={Fragment}>
-        <Dialog as="div" className="relative z-40 md:hidden" onClose={onClose || (() => {})}>
+        <Dialog as="div" className="relative z-50 lg:hidden" onClose={onClose || (() => {})}>
           <Transition.Child
             as={Fragment}
             enter="transition-opacity ease-linear duration-300"
@@ -134,7 +142,7 @@ export function AdminSidebar({ isMobile = false, isOpen = false, onClose }: Admi
             <div className="fixed inset-0 bg-gray-600 bg-opacity-75" />
           </Transition.Child>
 
-          <div className="fixed inset-0 z-40 flex">
+          <div className="fixed inset-0 z-50 flex">
             <Transition.Child
               as={Fragment}
               enter="transition ease-in-out duration-300 transform"
@@ -144,7 +152,7 @@ export function AdminSidebar({ isMobile = false, isOpen = false, onClose }: Admi
               leaveFrom="translate-x-0"
               leaveTo="-translate-x-full"
             >
-              <Dialog.Panel className="relative flex w-full max-w-xs flex-1 flex-col bg-white">
+              <Dialog.Panel className="relative flex w-full max-w-xs flex-1 flex-col bg-white focus:outline-none">
                 {sidebarContent}
               </Dialog.Panel>
             </Transition.Child>
@@ -156,8 +164,8 @@ export function AdminSidebar({ isMobile = false, isOpen = false, onClose }: Admi
 
   // Desktop sidebar
   return (
-    <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
-      <div className="flex flex-col flex-grow border-r border-gray-200 bg-white overflow-y-auto">
+    <div className="hidden lg:fixed lg:inset-y-0 lg:z-40 lg:flex lg:w-64 lg:flex-col">
+      <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white">
         {sidebarContent}
       </div>
     </div>

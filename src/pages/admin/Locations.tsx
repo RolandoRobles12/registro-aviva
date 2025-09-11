@@ -1,11 +1,84 @@
+// src/pages/admin/Locations.tsx - Versión corregida
 import React, { useState, useEffect } from 'react';
-import { FirestoreService } from '../../services/firestore';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import { LocationsTable } from '../../components/admin/LocationsTable';
 import { LocationForm } from '../../components/admin/LocationForm';
 import { ImportLocationsModal } from '../../components/admin/ImportLocationsModal';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
 import { Kiosk } from '../../types';
 import { PlusIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
+
+// Funciones locales para manejar kioscos
+const saveKiosk = async (kioskData: Omit<Kiosk, 'createdAt' | 'updatedAt'>): Promise<string> => {
+  try {
+    console.log('Guardando kiosko:', kioskData);
+    
+    // Importar las funciones necesarias
+    const { addDoc, collection, serverTimestamp, query, where, getDocs, updateDoc, doc } = await import('firebase/firestore');
+    
+    // Validar datos
+    if (!kioskData.id || !kioskData.name || !kioskData.city) {
+      throw new Error('Faltan campos obligatorios');
+    }
+
+    // Verificar si ya existe un kiosko con ese ID personalizado
+    const existingQuery = query(
+      collection(db, 'kiosks'),
+      where('id', '==', kioskData.id)
+    );
+    const existingSnapshot = await getDocs(existingQuery);
+
+    if (!existingSnapshot.empty) {
+      // Actualizar existente
+      const existingDoc = existingSnapshot.docs[0];
+      await updateDoc(doc(db, 'kiosks', existingDoc.id), {
+        ...kioskData,
+        updatedAt: serverTimestamp()
+      });
+      return existingDoc.id;
+    } else {
+      // Crear nuevo
+      const docRef = await addDoc(collection(db, 'kiosks'), {
+        ...kioskData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      return docRef.id;
+    }
+  } catch (error) {
+    console.error('Error guardando kiosko:', error);
+    throw error;
+  }
+};
+
+const loadAllKiosks = async (): Promise<Kiosk[]> => {
+  try {
+    console.log('Cargando kioscos...');
+    
+    // Intentar con orden primero
+    try {
+      const q = query(collection(db, 'kiosks'), orderBy('name', 'asc'));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Kiosk[];
+    } catch (orderError) {
+      console.log('No se pudo ordenar, intentando consulta simple...');
+      // Si falla el orderBy, intentar sin él
+      const q = query(collection(db, 'kiosks'));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Kiosk[];
+    }
+  } catch (error) {
+    console.error('Error cargando kioscos:', error);
+    throw error;
+  }
+};
 
 export default function AdminLocations() {
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
@@ -15,6 +88,7 @@ export default function AdminLocations() {
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editingKiosk, setEditingKiosk] = useState<Kiosk | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadKiosks();
@@ -25,12 +99,12 @@ export default function AdminLocations() {
       setLoading(true);
       setError(null);
 
-      // Get all kiosks (including inactive)
-      const kiosksList = await FirestoreService.getActiveKiosks(); // TODO: Update to get all kiosks
+      const kiosksList = await loadAllKiosks();
+      console.log('Kioscos cargados:', kiosksList);
       setKiosks(kiosksList);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading kiosks:', error);
-      setError('Error cargando ubicaciones');
+      setError(`Error cargando ubicaciones: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -38,27 +112,35 @@ export default function AdminLocations() {
 
   const handleKioskSave = async (kioskData: Omit<Kiosk, 'createdAt' | 'updatedAt'>) => {
     try {
+      setSaving(true);
       setError(null);
-      await FirestoreService.saveKiosk(kioskData);
+      
+      console.log('Datos del kiosko a guardar:', kioskData);
+      
+      await saveKiosk(kioskData);
       await loadKiosks();
       setShowForm(false);
       setEditingKiosk(null);
-      setSuccess(kioskData.id ? 'Kiosco actualizado correctamente' : 'Kiosco creado correctamente');
+      setSuccess(editingKiosk ? 'Kiosco actualizado correctamente' : 'Kiosco creado correctamente');
       
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving kiosk:', error);
-      setError('Error guardando el kiosco');
+      setError(`Error guardando el kiosco: ${error.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleEdit = (kiosk: Kiosk) => {
+    console.log('Editando kiosko:', kiosk);
     setEditingKiosk(kiosk);
     setShowForm(true);
   };
 
   const handleAdd = () => {
+    console.log('Añadiendo nuevo kiosko');
     setEditingKiosk(null);
     setShowForm(true);
   };
@@ -73,6 +155,19 @@ export default function AdminLocations() {
   const handleFormClose = () => {
     setShowForm(false);
     setEditingKiosk(null);
+    setError(null);
+  };
+
+  // Test Firestore connection
+  const testConnection = async () => {
+    try {
+      console.log('Probando conexión a Firestore...');
+      const testQuery = query(collection(db, 'kiosks'));
+      await getDocs(testQuery);
+      setSuccess('Conexión a Firestore exitosa');
+    } catch (error: any) {
+      setError(`Error de conexión: ${error.message}`);
+    }
   };
 
   return (
@@ -89,6 +184,14 @@ export default function AdminLocations() {
             </p>
           </div>
           <div className="flex items-center space-x-3">
+            {/* Debug button */}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={testConnection}
+            >
+              Test DB
+            </Button>
             <Button
               variant="secondary"
               onClick={() => setShowImport(true)}
@@ -142,15 +245,26 @@ export default function AdminLocations() {
                 id,name,latitude,longitude,city,state,type,active,radiusOverride
               </code>
               <ul className="mt-2 list-disc list-inside space-y-1">
-                <li><strong>id:</strong> Identificador único para el kiosco. Es obligatorio tanto para kioscos nuevos como para actualizaciones.</li>
-                <li><strong>type:</strong> Debe ser "Bodega Aurrera" o "Kiosco Aviva Tu Compra".</li>
-                <li><strong>active:</strong> "true" o "false".</li>
-                <li><strong>radiusOverride:</strong> Un número (ej: 200) o dejar en blanco para usar el radio por defecto.</li>
+                <li><strong>id:</strong> Identificador único para el kiosco (ej: 0001, 0002)</li>
+                <li><strong>type:</strong> Debe ser "BA", "Aviva_Contigo", "Casa_Marchand", "Construrama" o "Disensa"</li>
+                <li><strong>active:</strong> "true" o "false"</li>
+                <li><strong>radiusOverride:</strong> Un número (ej: 200) o dejar en blanco para usar el radio por defecto</li>
               </ul>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Debug Info */}
+      {import.meta.env.DEV && (
+        <div className="bg-gray-100 rounded-lg p-4 text-xs text-gray-600">
+          <strong>Debug Info:</strong>
+          <br />Total kioscos: {kiosks.length}
+          <br />Loading: {loading.toString()}
+          <br />Error: {error || 'None'}
+          <br />Firebase Config: {db.app.options.projectId}
+        </div>
+      )}
 
       {/* Locations Table */}
       <div className="bg-white shadow rounded-lg">
@@ -168,6 +282,7 @@ export default function AdminLocations() {
         {loading ? (
           <div className="p-6 text-center">
             <LoadingSpinner size="lg" />
+            <p className="mt-2 text-sm text-gray-500">Cargando kioscos...</p>
           </div>
         ) : (
           <LocationsTable
@@ -190,6 +305,7 @@ export default function AdminLocations() {
             kiosk={editingKiosk}
             onSave={handleKioskSave}
             onCancel={handleFormClose}
+            saving={saving}
           />
         </Modal>
       )}

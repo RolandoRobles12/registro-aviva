@@ -1,3 +1,4 @@
+// src/components/layout/AdminLayout.tsx - Versión corregida
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
@@ -7,10 +8,7 @@ export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="h-screen flex overflow-hidden bg-gray-100">
-      {/* Sidebar for desktop */}
-      <AdminSidebar />
-
+    <div className="min-h-screen bg-gray-50">
       {/* Sidebar for mobile */}
       <AdminSidebar
         isMobile={true}
@@ -18,17 +16,22 @@ export default function AdminLayout() {
         onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Content area */}
-      <div className="flex-1 overflow-hidden">
+      {/* Static sidebar for desktop */}
+      <AdminSidebar />
+
+      {/* Main content */}
+      <div className="lg:pl-64 flex flex-col min-h-screen">
+        {/* Header */}
         <Header
           onMenuClick={() => setSidebarOpen(true)}
           showMenuButton={true}
           isAdmin={true}
         />
 
-        <main className="flex-1 relative overflow-y-auto focus:outline-none">
+        {/* Page content */}
+        <main className="flex-1">
           <div className="py-6">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <Outlet />
             </div>
           </div>

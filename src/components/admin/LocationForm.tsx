@@ -1,7 +1,6 @@
-import React from 'react';
-import { useForm } from '../../hooks';
+// src/components/admin/LocationForm.tsx - Versión completa corregida
+import React, { useState, useEffect } from 'react';
 import { Button, Input, Select } from '../ui';
-import { kioskSchema } from '../../utils/validators';
 import { PRODUCT_TYPES, MEXICAN_STATES } from '../../utils/constants';
 import { Kiosk } from '../../types';
 
@@ -9,40 +8,67 @@ interface LocationFormProps {
   kiosk?: Kiosk | null;
   onSave: (data: Omit<Kiosk, 'createdAt' | 'updatedAt'>) => Promise<void>;
   onCancel: () => void;
+  saving?: boolean;
 }
 
-export function LocationForm({ kiosk, onSave, onCancel }: LocationFormProps) {
-  const {
-    values,
-    errors,
-    handleSubmit,
-    setValue,
-    isSubmitting
-  } = useForm<Omit<Kiosk, 'createdAt' | 'updatedAt'>>(
-    kiosk || {
-      id: '',
-      name: '',
-      city: '',
-      state: '',
-      productType: 'BA',
-      coordinates: { latitude: 0, longitude: 0 },
-      status: 'active'
+export function LocationForm({ kiosk, onSave, onCancel, saving = false }: LocationFormProps) {
+  // Estados del formulario
+  const [formData, setFormData] = useState({
+    id: '',
+    name: '',
+    city: '',
+    state: '',
+    productType: 'BA' as const,
+    coordinates: {
+      latitude: 0,
+      longitude: 0
     },
-    (values) => {
-      try {
-        kioskSchema.parse(values);
-        return {};
-      } catch (error: any) {
-        const fieldErrors: Partial<Record<keyof Kiosk, string>> = {};
-        error.errors?.forEach((err: any) => {
-          if (err.path?.length > 0) {
-            fieldErrors[err.path[0] as keyof Kiosk] = err.message;
-          }
-        });
-        return fieldErrors;
-      }
+    radiusOverride: undefined as number | undefined,
+    status: 'active' as const
+  });
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Inicializar formulario cuando cambia el kiosk
+  useEffect(() => {
+    console.log('Inicializando formulario con kiosk:', kiosk);
+    
+    if (kiosk) {
+      // Modo edición
+      setFormData({
+        id: kiosk.id || '',
+        name: kiosk.name || '',
+        city: kiosk.city || '',
+        state: kiosk.state || '',
+        productType: kiosk.productType || 'BA',
+        coordinates: {
+          latitude: kiosk.coordinates?.latitude || 0,
+          longitude: kiosk.coordinates?.longitude || 0
+        },
+        radiusOverride: kiosk.radiusOverride,
+        status: kiosk.status || 'active'
+      });
+    } else {
+      // Modo creación - formulario vacío
+      setFormData({
+        id: '',
+        name: '',
+        city: '',
+        state: '',
+        productType: 'BA',
+        coordinates: {
+          latitude: 0,
+          longitude: 0
+        },
+        radiusOverride: undefined,
+        status: 'active'
+      });
     }
-  );
+    
+    // Limpiar errores
+    setErrors({});
+  }, [kiosk]);
 
   const productTypeOptions = Object.entries(PRODUCT_TYPES).map(([key, label]) => ({
     value: key,
@@ -59,29 +85,137 @@ export function LocationForm({ kiosk, onSave, onCancel }: LocationFormProps) {
     { value: 'inactive', label: 'Inactivo' }
   ];
 
-  const handleFormSubmit = handleSubmit(async (formData) => {
-    await onSave(formData);
-  });
+  const handleInputChange = (field: string, value: any) => {
+    console.log(`Cambiando ${field}:`, value);
+    
+    if (field.includes('.')) {
+      // Campo anidado (ej: coordinates.latitude)
+      const [parent, child] = field.split('.');
+      setFormData(prev => ({
+        ...prev,
+        [parent]: {
+          ...prev[parent as keyof typeof prev],
+          [child]: value
+        }
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
+
+    // Limpiar error del campo si existe
+    if (errors[field]) {
+      setErrors(prev => ({
+        ...prev,
+        [field]: ''
+      }));
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    // Validar ID
+    if (!formData.id.trim()) {
+      newErrors.id = 'ID es requerido';
+    } else if (!/^\d{4}$/.test(formData.id)) {
+      newErrors.id = 'ID debe ser de 4 dígitos';
+    }
+
+    // Validar nombre
+    if (!formData.name.trim()) {
+      newErrors.name = 'Nombre es requerido';
+    }
+
+    // Validar ciudad
+    if (!formData.city.trim()) {
+      newErrors.city = 'Ciudad es requerida';
+    }
+
+    // Validar estado
+    if (!formData.state.trim()) {
+      newErrors.state = 'Estado es requerido';
+    }
+
+    // Validar coordenadas
+    if (!formData.coordinates.latitude || formData.coordinates.latitude === 0) {
+      newErrors.latitude = 'Latitud es requerida';
+    } else if (formData.coordinates.latitude < -90 || formData.coordinates.latitude > 90) {
+      newErrors.latitude = 'Latitud debe estar entre -90 y 90';
+    }
+
+    if (!formData.coordinates.longitude || formData.coordinates.longitude === 0) {
+      newErrors.longitude = 'Longitud es requerida';
+    } else if (formData.coordinates.longitude < -180 || formData.coordinates.longitude > 180) {
+      newErrors.longitude = 'Longitud debe estar entre -180 y 180';
+    }
+
+    // Validar radio override si se proporciona
+    if (formData.radiusOverride !== undefined && formData.radiusOverride !== null) {
+      if (formData.radiusOverride < 50 || formData.radiusOverride > 1000) {
+        newErrors.radiusOverride = 'Radio debe estar entre 50 y 1000 metros';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    console.log('Enviando formulario:', formData);
+    
+    if (!validateForm()) {
+      console.log('Errores de validación:', errors);
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      
+      // Preparar datos para enviar
+      const dataToSave = {
+        ...formData,
+        radiusOverride: formData.radiusOverride || undefined
+      };
+      
+      console.log('Datos a guardar:', dataToSave);
+      
+      await onSave(dataToSave);
+    } catch (error) {
+      console.error('Error en submit:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const isLoading = saving || isSubmitting;
+
+  console.log('Renderizando formulario. FormData:', formData);
 
   return (
-    <form onSubmit={handleFormSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6">
       {/* Basic Information */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Input
           label="ID del Kiosco"
           placeholder="0001"
-          value={values.id}
-          onChange={(e) => setValue('id', e.target.value)}
+          value={formData.id}
+          onChange={(e) => handleInputChange('id', e.target.value)}
           error={errors.id}
           helpText="Formato de 4 dígitos (ej: 0001, 0002)"
           required
+          disabled={!!kiosk} // No cambiar ID en modo edición
         />
 
         <Input
           label="Nombre del Kiosco"
           placeholder="Kiosco Chalco"
-          value={values.name}
-          onChange={(e) => setValue('name', e.target.value)}
+          value={formData.name}
+          onChange={(e) => handleInputChange('name', e.target.value)}
           error={errors.name}
           required
         />
@@ -92,16 +226,16 @@ export function LocationForm({ kiosk, onSave, onCancel }: LocationFormProps) {
         <Input
           label="Ciudad"
           placeholder="Chalco"
-          value={values.city}
-          onChange={(e) => setValue('city', e.target.value)}
+          value={formData.city}
+          onChange={(e) => handleInputChange('city', e.target.value)}
           error={errors.city}
           required
         />
 
         <Select
           label="Estado"
-          value={values.state}
-          onChange={(e) => setValue('state', e.target.value)}
+          value={formData.state}
+          onChange={(e) => handleInputChange('state', e.target.value)}
           options={stateOptions}
           placeholder="Selecciona un estado"
           error={errors.state}
@@ -113,8 +247,8 @@ export function LocationForm({ kiosk, onSave, onCancel }: LocationFormProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Select
           label="Tipo de Producto"
-          value={values.productType}
-          onChange={(e) => setValue('productType', e.target.value as any)}
+          value={formData.productType}
+          onChange={(e) => handleInputChange('productType', e.target.value)}
           options={productTypeOptions}
           error={errors.productType}
           required
@@ -122,8 +256,8 @@ export function LocationForm({ kiosk, onSave, onCancel }: LocationFormProps) {
 
         <Select
           label="Estado"
-          value={values.status}
-          onChange={(e) => setValue('status', e.target.value as any)}
+          value={formData.status}
+          onChange={(e) => handleInputChange('status', e.target.value)}
           options={statusOptions}
           error={errors.status}
           required
@@ -137,12 +271,9 @@ export function LocationForm({ kiosk, onSave, onCancel }: LocationFormProps) {
           type="number"
           step="any"
           placeholder="19.4326"
-          value={values.coordinates.latitude || ''}
-          onChange={(e) => setValue('coordinates', {
-            ...values.coordinates,
-            latitude: parseFloat(e.target.value) || 0
-          })}
-          error={errors.coordinates}
+          value={formData.coordinates.latitude || ''}
+          onChange={(e) => handleInputChange('coordinates.latitude', parseFloat(e.target.value) || 0)}
+          error={errors.latitude}
           helpText="Coordenada de latitud (ej: 19.4326)"
           required
         />
@@ -152,12 +283,9 @@ export function LocationForm({ kiosk, onSave, onCancel }: LocationFormProps) {
           type="number"
           step="any"
           placeholder="-99.1332"
-          value={values.coordinates.longitude || ''}
-          onChange={(e) => setValue('coordinates', {
-            ...values.coordinates,
-            longitude: parseFloat(e.target.value) || 0
-          })}
-          error={errors.coordinates}
+          value={formData.coordinates.longitude || ''}
+          onChange={(e) => handleInputChange('coordinates.longitude', parseFloat(e.target.value) || 0)}
+          error={errors.longitude}
           helpText="Coordenada de longitud (ej: -99.1332)"
           required
         />
@@ -168,12 +296,10 @@ export function LocationForm({ kiosk, onSave, onCancel }: LocationFormProps) {
         label="Radio Personalizado (metros)"
         type="number"
         placeholder="150"
-        value={values.radiusOverride || ''}
-        onChange={(e) => setValue('radiusOverride', 
-          e.target.value ? parseInt(e.target.value) : undefined
-        )}
+        value={formData.radiusOverride || ''}
+        onChange={(e) => handleInputChange('radiusOverride', e.target.value ? parseInt(e.target.value) : undefined)}
         error={errors.radiusOverride}
-        helpText="Opcional: Radio específico para este kiosco. Si se deja vacío, se usa el valor por defecto."
+        helpText="Opcional: Radio específico para este kiosco. Si se deja vacío, se usa el valor por defecto (150m)."
       />
 
       {/* Help Text */}
@@ -189,23 +315,59 @@ export function LocationForm({ kiosk, onSave, onCancel }: LocationFormProps) {
         </ul>
       </div>
 
+      {/* Current Values Display */}
+      <div className="bg-gray-50 rounded-md p-3">
+        <h4 className="text-sm font-medium text-gray-900 mb-2">
+          Vista Previa
+        </h4>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-gray-600">ID:</span>
+            <p className="font-medium">{formData.id || 'Sin especificar'}</p>
+          </div>
+          <div>
+            <span className="text-gray-600">Nombre:</span>
+            <p className="font-medium">{formData.name || 'Sin especificar'}</p>
+          </div>
+          <div>
+            <span className="text-gray-600">Ubicación:</span>
+            <p className="font-medium">{formData.city ? `${formData.city}, ${formData.state}` : 'Sin especificar'}</p>
+          </div>
+          <div>
+            <span className="text-gray-600">Producto:</span>
+            <p className="font-medium">{PRODUCT_TYPES[formData.productType]}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Actions */}
-      <div className="flex justify-end space-x-3">
+      <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
         <Button
           type="button"
           variant="secondary"
           onClick={onCancel}
-          disabled={isSubmitting}
+          disabled={isLoading}
         >
           Cancelar
         </Button>
         <Button
           type="submit"
-          loading={isSubmitting}
+          loading={isLoading}
+          disabled={isLoading}
         >
-          {kiosk ? 'Actualizar Kiosco' : 'Crear Kiosco'}
+          {isLoading ? 'Guardando...' : (kiosk ? 'Actualizar Kiosco' : 'Crear Kiosco')}
         </Button>
       </div>
+
+      {/* Debug Info (solo en desarrollo) */}
+      {import.meta.env.DEV && (
+        <div className="bg-gray-100 rounded-md p-3 text-xs">
+          <strong>Debug:</strong>
+          <pre>{JSON.stringify(formData, null, 2)}</pre>
+          <strong>Errores:</strong>
+          <pre>{JSON.stringify(errors, null, 2)}</pre>
+        </div>
+      )}
     </form>
   );
 }

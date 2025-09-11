@@ -1,4 +1,4 @@
-// src/pages/employee/SimpleCheckIn.tsx
+// src/pages/employee/SimpleCheckIn.tsx - Versión corregida
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirestoreService } from '../../services/firestore';
@@ -55,7 +55,7 @@ export default function SimpleCheckIn() {
     };
     
     requestLocationOnLoad();
-  }, []);
+  }, [getCurrentLocation, location]);
 
   const loadKiosks = async () => {
     try {
@@ -160,6 +160,16 @@ export default function SimpleCheckIn() {
     try {
       setSubmitting(true);
       
+      // Upload photo first
+      let photoUrl: string | undefined;
+      if (photoFile) {
+        photoUrl = await StorageService.uploadCheckInPhoto(
+          user.id,
+          photoFile,
+          `temp_${Date.now()}`
+        );
+      }
+
       const formData: CheckInFormData = {
         kioskId: selectedKiosk,
         type: checkInType as any,
@@ -174,7 +184,7 @@ export default function SimpleCheckIn() {
           longitude: location.longitude,
           accuracy: location.accuracy
         },
-        photoFile
+        photoUrl
       );
 
       alert('✓ Check-in registrado exitosamente!');
