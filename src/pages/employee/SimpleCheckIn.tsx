@@ -1,9 +1,10 @@
-// src/pages/employee/SimpleCheckIn.tsx - Versión corregida
+// src/pages/employee/SimpleCheckIn.tsx - Versión con imports corregidos
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirestoreService } from '../../services/firestore';
 import { StorageService } from '../../services/storage';
 import { useGeolocation } from '../../hooks';
+import { Button, Input, Select, Alert } from '../../components/ui';
 import { MapPinIcon, CameraIcon, ClockIcon, CalendarDaysIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { PRODUCT_TYPES, CHECK_IN_TYPES, TIME_OFF_TYPES } from '../../utils/constants';
 import { CheckInFormData, TimeOffFormData, Kiosk } from '../../types';

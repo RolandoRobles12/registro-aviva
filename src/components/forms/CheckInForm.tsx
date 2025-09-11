@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useForm } from '../../hooks';
-import { useGeolocation, useCamera } from '../../hooks';
+import { useGeolocation } from '../../hooks';
 import { Button, Select, Input, Alert } from '../ui';
 import { CameraCapture } from '../common/CameraCapture';
 import { LocationPermissions } from '../common/LocationPermissions';
@@ -20,6 +20,8 @@ interface CheckInFormProps {
 }
 
 export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = false }: CheckInFormProps) {
+  console.log('CheckInForm renderizado con', kiosks.length, 'kioscos');
+  
   const [selectedKiosk, setSelectedKiosk] = useState<Kiosk | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<CameraCaptureType | null>(null);
   const [showCamera, setShowCamera] = useState(false);
@@ -50,10 +52,11 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
     }
   );
 
-  const kioskOptions = kiosks.map(kiosk => ({
-    value: kiosk.id,
-    label: `${kiosk.name} - ${PRODUCT_TYPES[kiosk.productType]}`,
-    disabled: kiosk.status !== 'active'
+  // Get unique product types from available kiosks
+  const availableProductTypes = [...new Set(kiosks.map(k => k.productType))];
+  const productTypeOptions = availableProductTypes.map(type => ({
+    value: type,
+    label: PRODUCT_TYPES[type]
   }));
 
   const checkInTypeOptions = Object.entries(CHECK_IN_TYPES).map(([key, label]) => ({
@@ -61,27 +64,60 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
     label
   }));
 
+  // Filter kiosks based on product type selection
+  const [selectedProductType, setSelectedProductType] = useState('');
+  const filteredKiosks = selectedProductType 
+    ? kiosks.filter(k => k.productType === selectedProductType)
+    : [];
+
+  const kioskOptions = filteredKiosks.map(kiosk => ({
+    value: kiosk.id,
+    label: `${kiosk.name} (${kiosk.id})`,
+    disabled: kiosk.status !== 'active'
+  }));
+
+  const handleProductTypeChange = (productType: string) => {
+    console.log('Producto seleccionado:', productType);
+    setSelectedProductType(productType);
+    setValue('kioskId', '');
+    setSelectedKiosk(null);
+  };
+
   const handleKioskChange = (kioskId: string) => {
+    console.log('Kiosco seleccionado:', kioskId);
     setValue('kioskId', kioskId);
     const kiosk = kiosks.find(k => k.id === kioskId);
     setSelectedKiosk(kiosk || null);
   };
 
   const handlePhotoCapture = (capture: CameraCaptureType) => {
+    console.log('Foto capturada:', capture.file.name, capture.file.size);
     setCapturedPhoto(capture);
     setShowCamera(false);
   };
 
   const handleRemovePhoto = () => {
+    console.log('Foto removida');
     setCapturedPhoto(null);
+  };
+
+  const handleOpenCamera = () => {
+    console.log('Abriendo cámara...');
+    setShowCamera(true);
   };
 
   const handleFormSubmit = handleSubmit(async (formData) => {
     try {
-      // Get current location
-      const location = await getCurrentLocation();
+      console.log('Enviando formulario:', formData);
       
-      // Submit with photo if captured
+      if (!capturedPhoto) {
+        alert('La fotografía es obligatoria para registrar el check-in');
+        return;
+      }
+
+      const location = await getCurrentLocation();
+      console.log('Ubicación obtenida:', location);
+      
       await onSubmit(
         formData,
         {
@@ -89,20 +125,34 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
           longitude: location.longitude,
           accuracy: location.accuracy
         },
-        capturedPhoto?.file
+        capturedPhoto.file
       );
 
       // Reset form on success
       reset();
       setCapturedPhoto(null);
       setSelectedKiosk(null);
+      setSelectedProductType('');
     } catch (error: any) {
-      console.error('Form submission error:', error);
+      console.error('Error en formulario:', error);
     }
   });
 
   return (
     <form onSubmit={handleFormSubmit} className="space-y-6">
+      {/* Debug info */}
+      {import.meta.env.DEV && (
+        <div className="p-3 bg-gray-100 rounded text-xs">
+          <strong>Debug:</strong><br/>
+          Kioscos: {kiosks.length}<br/>
+          Producto: {selectedProductType}<br/>
+          Kiosko: {values.kioskId}<br/>
+          Tipo: {values.type}<br/>
+          Foto: {capturedPhoto ? 'Sí' : 'No'}<br/>
+          Ubicación: {permission.granted ? 'Permitida' : 'Denegada'}
+        </div>
+      )}
+
       {/* Location Permissions Check */}
       {!permission.granted && (
         <LocationPermissions />
@@ -117,14 +167,25 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
         />
       )}
 
+      {/* Product Type Selection */}
+      <Select
+        label="Producto *"
+        value={selectedProductType}
+        onChange={(e) => handleProductTypeChange(e.target.value)}
+        options={productTypeOptions}
+        placeholder="Selecciona un producto"
+        required
+      />
+
       {/* Kiosk Selection */}
       <Select
-        label="Kiosco"
+        label="Kiosco *"
         value={values.kioskId}
         onChange={(e) => handleKioskChange(e.target.value)}
         options={kioskOptions}
-        placeholder="Selecciona un kiosco"
+        placeholder={selectedProductType ? "Selecciona un kiosco" : "Primero selecciona un producto"}
         error={errors.kioskId}
+        disabled={!selectedProductType}
         required
       />
 
@@ -144,7 +205,7 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
 
       {/* Check-in Type */}
       <Select
-        label="Tipo de Check-in"
+        label="Tipo de Check-in *"
         value={values.type}
         onChange={(e) => setValue('type', e.target.value as any)}
         options={checkInTypeOptions}
@@ -152,30 +213,33 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
         required
       />
 
-      {/* Photo Capture */}
+      {/* Photo Capture - Simplificado */}
       <div className="space-y-3">
         <label className="block text-sm font-medium text-gray-700">
-          Fotografía de Evidencia
+          Fotografía de Evidencia *
         </label>
         
         {!capturedPhoto ? (
           <div className="space-y-3">
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+              <div className="space-y-2">
+                <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                  <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <div className="text-sm text-gray-600">
+                  <p>Captura una foto como evidencia</p>
+                  <p className="text-xs text-gray-500 mt-1">La fotografía es obligatoria</p>
+                </div>
+              </div>
+            </div>
             <Button
               type="button"
-              variant="secondary"
-              onClick={() => setShowCamera(true)}
-              leftIcon={
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              }
+              variant="primary"
+              onClick={handleOpenCamera}
+              fullWidth
             >
-              Capturar Foto
+              📷 Tomar Foto
             </Button>
-            <p className="text-xs text-gray-500">
-              La fotografía es opcional pero recomendada como evidencia del registro.
-            </p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -183,26 +247,26 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
               <img
                 src={capturedPhoto.dataUrl}
                 alt="Foto capturada"
-                className="w-full max-w-md h-48 object-cover rounded-lg border border-gray-300"
+                className="w-full max-w-md h-48 object-cover rounded-lg border border-gray-300 mx-auto"
               />
               <button
                 type="button"
                 onClick={handleRemovePhoto}
                 className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                ✕
               </button>
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setShowCamera(true)}
-            >
-              Tomar Nueva Foto
-            </Button>
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleOpenCamera}
+              >
+                🔄 Tomar Nueva Foto
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -222,12 +286,7 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
           type="submit"
           size="lg"
           loading={loading}
-          disabled={disabled || !permission.granted}
-          leftIcon={
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
+          disabled={disabled || !permission.granted || !capturedPhoto || !values.kioskId || !values.type}
         >
           Registrar Check-in
         </Button>
