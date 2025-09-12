@@ -1,27 +1,41 @@
+// src/pages/admin/Statistics.tsx - COMPLETO CON DATOS REALES
 import React, { useState, useEffect } from 'react';
+import { AttendanceService } from '../../services/attendance';
+import { FirestoreService } from '../../services/firestore';
+import { LoadingSpinner, Alert } from '../../components/ui';
+import { PRODUCT_TYPES } from '../../utils/constants';
+import { formatPercentage } from '../../utils/formatters';
+import { 
+  ChartBarIcon, 
+  UsersIcon, 
+  ClockIcon, 
+  CheckCircleIcon,
+  XCircleIcon,
+  ExclamationTriangleIcon
+} from '@heroicons/react/24/outline';
 
-interface AttendanceStats {
-  totalEmployees: number;
-  presentToday: number;
-  absentToday: number;
-  lateToday: number;
-  avgHoursPerDay: number;
-  monthlyAttendance: Array<{
-    month: string;
-    present: number;
-    absent: number;
-    late: number;
-  }>;
-  departmentStats: Array<{
-    department: string;
-    attendance: number;
-    employees: number;
-  }>;
+interface DepartmentStat {
+  department: string;
+  employees: number;
+  present: number;
+  absent: number;
+  attendance: number;
+  punctuality: number;
+}
+
+interface MonthlyTrend {
+  month: string;
+  present: number;
+  absent: number;
+  late: number;
 }
 
 const AdminStatistics: React.FC = () => {
-  const [stats, setStats] = useState<AttendanceStats | null>(null);
+  const [stats, setStats] = useState<any>(null);
+  const [departmentStats, setDepartmentStats] = useState<DepartmentStat[]>([]);
+  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrend[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year'>('month');
 
   useEffect(() => {
@@ -30,91 +44,91 @@ const AdminStatistics: React.FC = () => {
 
   const fetchStatistics = async () => {
     setLoading(true);
+    setError(null);
+    
     try {
-      // Simulated data - replace with actual API call
-      const mockStats: AttendanceStats = {
-        totalEmployees: 150,
-        presentToday: 138,
-        absentToday: 8,
-        lateToday: 4,
-        avgHoursPerDay: 8.2,
-        monthlyAttendance: [
-          { month: 'Enero', present: 142, absent: 5, late: 3 },
-          { month: 'Febrero', present: 145, absent: 3, late: 2 },
-          { month: 'Marzo', present: 140, absent: 7, late: 3 },
-          { month: 'Abril', present: 138, absent: 8, late: 4 },
-          { month: 'Mayo', present: 144, absent: 4, late: 2 },
-          { month: 'Junio', present: 138, absent: 8, late: 4 },
-        ],
-        departmentStats: [
-          { department: 'Ventas', attendance: 95, employees: 25 },
-          { department: 'IT', attendance: 98, employees: 15 },
-          { department: 'RRHH', attendance: 92, employees: 8 },
-          { department: 'Contabilidad', attendance: 97, employees: 12 },
-          { department: 'Marketing', attendance: 94, employees: 10 },
-          { department: 'Operaciones', attendance: 89, employees: 30 },
-        ]
-      };
+      // Calculate date range based on selected period
+      const end = new Date();
+      const start = new Date();
       
-      setTimeout(() => {
-        setStats(mockStats);
-        setLoading(false);
-      }, 1000);
+      switch (selectedPeriod) {
+        case 'week':
+          start.setDate(start.getDate() - 7);
+          break;
+        case 'month':
+          start.setMonth(start.getMonth() - 1);
+          break;
+        case 'year':
+          start.setFullYear(start.getFullYear() - 1);
+          break;
+      }
+
+      // Get real statistics
+      const [attendanceStats, deptStats, trends] = await Promise.all([
+        AttendanceService.getAttendanceStats({ start, end }),
+        AttendanceService.getDepartmentStats({ start, end }),
+        getMonthlyTrend()
+      ]);
+      
+      setStats(attendanceStats);
+      setDepartmentStats(deptStats);
+      setMonthlyTrend(trends);
     } catch (error) {
       console.error('Error fetching statistics:', error);
+      setError('Error cargando estadísticas');
+    } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-        </div>
-      </div>
-    );
-  }
+  const getMonthlyTrend = async (): Promise<MonthlyTrend[]> => {
+    const trends: MonthlyTrend[] = [];
+    const now = new Date();
+    
+    for (let i = 5; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+      
+      const stats = await AttendanceService.getAttendanceStats({ start, end });
+      
+      trends.push({
+        month: start.toLocaleDateString('es-MX', { month: 'short' }),
+        present: stats.totalPresent,
+        absent: stats.totalAbsent,
+        late: stats.totalLate
+      });
+    }
+    
+    return trends;
+  };
 
-  if (!stats) {
-    return (
-      <div className="p-6">
-        <div className="text-center text-gray-500">
-          Error al cargar las estadísticas
-        </div>
-      </div>
-    );
-  }
-
-  const attendanceRate = ((stats.presentToday / stats.totalEmployees) * 100).toFixed(1);
-
-  // Simple bar chart component using CSS
-  const BarChart = ({ data }: { data: Array<{ month: string; present: number; absent: number; late: number }> }) => {
-    const maxValue = Math.max(...data.map(d => d.present + d.absent + d.late));
+  // Simple bar chart component
+  const BarChart = ({ data }: { data: MonthlyTrend[] }) => {
+    const maxValue = Math.max(...data.map(d => d.present + d.absent + d.late)) || 1;
     
     return (
       <div className="space-y-3">
         {data.map((item, index) => (
           <div key={index} className="flex items-center space-x-3">
-            <div className="w-16 text-sm font-medium text-gray-700">{item.month}</div>
+            <div className="w-16 text-sm font-medium text-gray-700 capitalize">{item.month}</div>
             <div className="flex-1 flex">
               <div 
                 className="bg-green-500 h-6 flex items-center justify-center text-white text-xs"
-                style={{ width: `${(item.present / maxValue) * 100}%`, minWidth: '20px' }}
+                style={{ width: `${(item.present / maxValue) * 100}%`, minWidth: item.present > 0 ? '30px' : '0px' }}
               >
-                {item.present}
+                {item.present > 0 && item.present}
               </div>
               <div 
                 className="bg-red-500 h-6 flex items-center justify-center text-white text-xs"
-                style={{ width: `${(item.absent / maxValue) * 100}%`, minWidth: item.absent > 0 ? '20px' : '0px' }}
+                style={{ width: `${(item.absent / maxValue) * 100}%`, minWidth: item.absent > 0 ? '30px' : '0px' }}
               >
-                {item.absent > 0 ? item.absent : ''}
+                {item.absent > 0 && item.absent}
               </div>
               <div 
                 className="bg-yellow-500 h-6 flex items-center justify-center text-white text-xs"
-                style={{ width: `${(item.late / maxValue) * 100}%`, minWidth: item.late > 0 ? '20px' : '0px' }}
+                style={{ width: `${(item.late / maxValue) * 100}%`, minWidth: item.late > 0 ? '30px' : '0px' }}
               >
-                {item.late > 0 ? item.late : ''}
+                {item.late > 0 && item.late}
               </div>
             </div>
           </div>
@@ -137,6 +151,35 @@ const AdminStatistics: React.FC = () => {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-center h-64">
+          <LoadingSpinner size="lg" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <Alert type="error" message={error} />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="p-6">
+        <Alert type="warning" message="No hay datos disponibles" />
+      </div>
+    );
+  }
+
+  const attendanceRate = formatPercentage(stats.attendanceRate);
+  const punctualityRate = formatPercentage(stats.punctualityRate);
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -145,7 +188,7 @@ const AdminStatistics: React.FC = () => {
           <select 
             value={selectedPeriod} 
             onChange={(e) => setSelectedPeriod(e.target.value as 'week' | 'month' | 'year')}
-            className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
             <option value="week">Esta Semana</option>
             <option value="month">Este Mes</option>
@@ -159,88 +202,61 @@ const AdminStatistics: React.FC = () => {
         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Empleados</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.totalEmployees}</p>
-              <p className="text-xs text-gray-500">Empleados activos</p>
+              <p className="text-sm font-medium text-gray-600">Total Esperado</p>
+              <p className="text-3xl font-bold text-gray-900">{stats.totalExpected}</p>
+              <p className="text-xs text-gray-500">Check-ins esperados</p>
             </div>
-            <div className="text-4xl">👥</div>
+            <UsersIcon className="h-8 w-8 text-gray-400" />
           </div>
         </div>
 
         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Asistencia Hoy</p>
-              <p className="text-3xl font-bold text-green-600">{stats.presentToday}</p>
-              <p className="text-xs text-gray-500">{attendanceRate}% de asistencia</p>
+              <p className="text-sm font-medium text-gray-600">Asistencia</p>
+              <p className="text-3xl font-bold text-green-600">{attendanceRate}</p>
+              <p className="text-xs text-gray-500">{stats.totalPresent} presentes</p>
             </div>
-            <div className="text-4xl">✅</div>
+            <CheckCircleIcon className="h-8 w-8 text-green-400" />
           </div>
         </div>
 
         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Ausencias Hoy</p>
-              <p className="text-3xl font-bold text-red-600">{stats.absentToday}</p>
-              <p className="text-xs text-gray-500">{stats.lateToday} llegadas tarde</p>
+              <p className="text-sm font-medium text-gray-600">Ausencias</p>
+              <p className="text-3xl font-bold text-red-600">{stats.totalAbsent}</p>
+              <p className="text-xs text-gray-500">Total ausentes</p>
             </div>
-            <div className="text-4xl">❌</div>
+            <XCircleIcon className="h-8 w-8 text-red-400" />
           </div>
         </div>
 
         <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Promedio Horas/Día</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.avgHoursPerDay}</p>
-              <p className="text-xs text-gray-500">Horas trabajadas</p>
+              <p className="text-sm font-medium text-gray-600">Puntualidad</p>
+              <p className="text-3xl font-bold text-yellow-600">{punctualityRate}</p>
+              <p className="text-xs text-gray-500">{stats.totalLate} tardanzas</p>
             </div>
-            <div className="text-4xl">⏰</div>
+            <ClockIcon className="h-8 w-8 text-yellow-400" />
           </div>
         </div>
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Attendance Chart */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Tendencia de Asistencia Mensual</h3>
-          <BarChart data={stats.monthlyAttendance} />
+      {/* Monthly Trends */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold text-gray-900">Tendencia Mensual</h2>
+          <ChartBarIcon className="h-6 w-6 text-gray-400" />
         </div>
-
-        {/* Department Statistics */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Asistencia por Departamento</h3>
-          <div className="space-y-3">
-            {stats.departmentStats.map((dept, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex-1">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm font-medium text-gray-900">{dept.department}</span>
-                    <span className="text-sm font-bold text-gray-700">{dept.attendance}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full ${
-                        dept.attendance >= 95 ? 'bg-green-500' : 
-                        dept.attendance >= 90 ? 'bg-yellow-500' : 'bg-red-500'
-                      }`}
-                      style={{ width: `${dept.attendance}%` }}
-                    ></div>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">{dept.employees} empleados</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <BarChart data={monthlyTrend} />
       </div>
 
-      {/* Detailed Statistics Table */}
+      {/* Department Statistics Table */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Resumen por Departamento</h3>
+          <h2 className="text-xl font-semibold text-gray-900">Estadísticas por Departamento</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -253,68 +269,139 @@ const AdminStatistics: React.FC = () => {
                   Empleados
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  % Asistencia
+                  Presentes
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Estado
+                  Ausentes
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Asistencia
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Puntualidad
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {stats.departmentStats.map((dept, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {dept.department}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {dept.employees}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex items-center">
-                      <span className="mr-2">{dept.attendance}%</span>
-                      <span className="text-green-500">↗ +2.3%</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      dept.attendance >= 95 
-                        ? 'bg-green-100 text-green-800' 
-                        : dept.attendance >= 90 
-                        ? 'bg-yellow-100 text-yellow-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {dept.attendance >= 95 ? 'Excelente' : dept.attendance >= 90 ? 'Bueno' : 'Necesita atención'}
-                    </span>
+              {departmentStats.length > 0 ? (
+                departmentStats.map((dept, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {dept.department}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {dept.employees}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        {dept.present}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        {dept.absent}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex items-center">
+                        <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2">
+                          <div 
+                            className="bg-green-500 h-2 rounded-full"
+                            style={{ width: `${dept.attendance}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-xs font-medium">{formatPercentage(dept.attendance)}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="flex items-center">
+                        <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2">
+                          <div 
+                            className="bg-yellow-500 h-2 rounded-full"
+                            style={{ width: `${dept.punctuality}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-xs font-medium">{formatPercentage(dept.punctuality)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
+                    No hay datos disponibles por departamento
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-blue-50 rounded-lg p-6">
-          <h4 className="text-lg font-semibold text-blue-900 mb-2">Tendencia General</h4>
-          <p className="text-sm text-blue-700">
-            La asistencia general se mantiene estable con un promedio del {attendanceRate}% 
-            durante el período seleccionado.
-          </p>
+      {/* Additional Insights */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Resumen del Período</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Promedio de asistencia:</span>
+              <span className="text-sm font-semibold text-gray-900">{attendanceRate}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Promedio de puntualidad:</span>
+              <span className="text-sm font-semibold text-gray-900">{punctualityRate}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Total de check-ins:</span>
+              <span className="text-sm font-semibold text-gray-900">{stats.totalPresent + stats.totalLate}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Período seleccionado:</span>
+              <span className="text-sm font-semibold text-gray-900 capitalize">{selectedPeriod}</span>
+            </div>
+          </div>
         </div>
-        
-        <div className="bg-green-50 rounded-lg p-6">
-          <h4 className="text-lg font-semibold text-green-900 mb-2">Mejor Departamento</h4>
-          <p className="text-sm text-green-700">
-            IT lidera con 98% de asistencia, seguido por Contabilidad con 97%.
-          </p>
-        </div>
-        
-        <div className="bg-yellow-50 rounded-lg p-6">
-          <h4 className="text-lg font-semibold text-yellow-900 mb-2">Área de Mejora</h4>
-          <p className="text-sm text-yellow-700">
-            Operaciones tiene el menor porcentaje de asistencia (89%) y requiere atención.
-          </p>
+
+        <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Alertas y Notificaciones</h3>
+          <div className="space-y-3">
+            {stats.totalAbsent > stats.totalExpected * 0.1 && (
+              <div className="flex items-start space-x-2">
+                <ExclamationTriangleIcon className="h-5 w-5 text-yellow-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Alta tasa de ausencias</p>
+                  <p className="text-xs text-gray-500">Las ausencias superan el 10% del esperado</p>
+                </div>
+              </div>
+            )}
+            {stats.totalLate > stats.totalPresent * 0.15 && (
+              <div className="flex items-start space-x-2">
+                <ClockIcon className="h-5 w-5 text-orange-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Puntualidad por mejorar</p>
+                  <p className="text-xs text-gray-500">Las tardanzas superan el 15% de los presentes</p>
+                </div>
+              </div>
+            )}
+            {stats.attendanceRate >= 95 && (
+              <div className="flex items-start space-x-2">
+                <CheckCircleIcon className="h-5 w-5 text-green-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Excelente asistencia</p>
+                  <p className="text-xs text-gray-500">La tasa de asistencia supera el 95%</p>
+                </div>
+              </div>
+            )}
+            {stats.attendanceRate >= 95 && stats.totalLate <= stats.totalPresent * 0.05 && (
+              <div className="flex items-start space-x-2">
+                <CheckCircleIcon className="h-5 w-5 text-green-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Excelente desempeño general</p>
+                  <p className="text-xs text-gray-500">Alta asistencia y puntualidad</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

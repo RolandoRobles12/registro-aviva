@@ -34,6 +34,7 @@ import {
   SystemConfig,
   Holiday
 } from '../types';
+import { ScheduleService } from './schedules';
 
 export class FirestoreService {
   
@@ -61,8 +62,8 @@ export class FirestoreService {
         throw new Error('Usuario o kiosco no encontrado');
       }
 
-      // Calculate validation results
-      const validationResults = await this.validateCheckIn(kiosk, location, formData.type);
+      // Calculate validation results - PASS userId
+      const validationResults = await this.validateCheckIn(kiosk, location, formData.type, userId);
 
       const checkInData: Omit<CheckIn, 'id'> = {
         userId,
@@ -75,7 +76,7 @@ export class FirestoreService {
         location,
         photoUrl,
         notes: formData.notes,
-        status: this.determineCheckInStatus(validationResults),
+        status: validationResults.status || this.determineCheckInStatus(validationResults),
         validationResults,
         createdAt: serverTimestamp()
       };
@@ -573,7 +574,8 @@ export class FirestoreService {
   private static async validateCheckIn(
     kiosk: Kiosk, 
     location: { latitude: number; longitude: number },
-    checkInType: string
+    checkInType: string,
+    userId: string
   ) {
     const distance = this.calculateDistance(
       location.latitude,
@@ -588,16 +590,43 @@ export class FirestoreService {
     const allowedRadius = kiosk.radiusOverride || config?.defaultRadius || 150;
     const locationValid = distance <= allowedRadius;
 
-    // For now, simplified timing validation
-    // TODO: Implement proper business hours validation
-    const isOnTime = true; // Will be implemented with business rules
-    const minutesLate = 0;
+    // Get last lunch check-in if validating lunch return
+    let lastLunchCheckIn: Date | undefined;
+    if (checkInType === 'regreso_comida') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const q = query(
+        collection(db, 'checkins'),
+        where('userId', '==', userId),
+        where('type', '==', 'comida'),
+        where('timestamp', '>=', Timestamp.fromDate(today)),
+        orderBy('timestamp', 'desc'),
+        limit(1)
+      );
+      
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const lunchData = snapshot.docs[0].data();
+        lastLunchCheckIn = lunchData.timestamp.toDate();
+      }
+    }
+
+    // Validate timing with schedules
+    const timingValidation = await ScheduleService.validateCheckInTiming(
+      kiosk.productType,
+      checkInType,
+      new Date(),
+      lastLunchCheckIn
+    );
 
     return {
       locationValid,
       distanceFromKiosk: Math.round(distance),
-      isOnTime,
-      minutesLate
+      isOnTime: timingValidation.isOnTime,
+      minutesLate: timingValidation.minutesLate,
+      minutesEarly: timingValidation.minutesEarly,
+      status: timingValidation.status
     };
   }
 
@@ -609,8 +638,18 @@ export class FirestoreService {
       return 'ubicacion_invalida';
     }
     
+    // Use the status from validation results if available
+    if (validationResults.status) {
+      return validationResults.status;
+    }
+    
+    // Fallback logic
     if (validationResults.minutesLate > 0) {
       return 'retrasado';
+    }
+    
+    if (validationResults.minutesEarly > 30) {
+      return 'anticipado';
     }
     
     return 'a_tiempo';

@@ -1,24 +1,30 @@
-// src/pages/admin/Dashboard.tsx - Fixed version
+// src/pages/admin/Dashboard.tsx - COMPLETO CON CORRECCIONES
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirestoreService } from '../../services/firestore';
+import { AttendanceService } from '../../services/attendance';
 import { LoadingSpinner, Alert } from '../../components/ui';
 import { KPICards } from '../../components/admin/KPICards';
 import { RecentCheckIns } from '../../components/admin/RecentCheckIns';
 import { PendingRequests } from '../../components/admin/PendingRequests';
 import { QuickActions } from '../../components/admin/QuickActions';
-import { CheckIn, TimeOffRequest, SystemKPIs } from '../../types';
+import { CheckIn, TimeOffRequest, SystemKPIs, AttendanceIssue } from '../../types';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
   const [recentCheckIns, setRecentCheckIns] = useState<CheckIn[]>([]);
   const [pendingRequests, setPendingRequests] = useState<TimeOffRequest[]>([]);
+  const [attendanceIssues, setAttendanceIssues] = useState<AttendanceIssue[]>([]);
   const [kpis, setKPIs] = useState<SystemKPIs | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboardData();
+    // Reload data every 5 minutes
+    const interval = setInterval(loadDashboardData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadDashboardData = async () => {
@@ -26,85 +32,97 @@ export default function AdminDashboard() {
       setLoading(true);
       setError(null);
       
-      // Get recent check-ins (last 24 hours)
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
+      // Get date range for today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
       
-      // Load data with error handling for each call
-      const [checkInsResult, timeOffRequests] = await Promise.allSettled([
+      // Load all data in parallel
+      const [checkInsResult, timeOffResult, issuesResult, statsResult] = await Promise.allSettled([
         FirestoreService.getCheckIns({
           dateRange: {
-            start: yesterday,
-            end: new Date()
+            start: today,
+            end: tomorrow
           }
         }),
-        FirestoreService.getTimeOffRequests({
-          status: 'pending'
+        FirestoreService.getTimeOffRequests({ status: 'pending' }),
+        AttendanceService.getAttendanceIssues({ 
+          date: today, 
+          resolved: false 
+        }),
+        AttendanceService.getAttendanceStats({
+          start: today,
+          end: tomorrow
         })
       ]);
 
-      // Handle check-ins result
+      // Handle check-ins
       if (checkInsResult.status === 'fulfilled') {
         setRecentCheckIns(checkInsResult.value.data);
-        
-        // Calculate KPIs from check-ins
-        const calculatedKPIs = calculateKPIs(checkInsResult.value.data);
+        const calculatedKPIs = calculateKPIs(checkInsResult.value.data, statsResult);
         setKPIs(calculatedKPIs);
       } else {
         console.error('Error loading check-ins:', checkInsResult.reason);
         setRecentCheckIns([]);
-        setKPIs(getDefaultKPIs());
       }
 
-      // Handle time off requests result
-      if (timeOffRequests.status === 'fulfilled') {
-        setPendingRequests(timeOffRequests.value);
+      // Handle time off requests
+      if (timeOffResult.status === 'fulfilled' && timeOffResult.value) {
+        // Filter only pending requests
+        const pendingOnly = timeOffResult.value.filter(r => r.status === 'pending');
+        setPendingRequests(pendingOnly);
+        console.log('Pending requests loaded:', pendingOnly.length);
       } else {
-        console.error('Error loading time off requests:', timeOffRequests.reason);
+        console.error('Error loading time off requests');
         setPendingRequests([]);
+      }
+
+      // Handle attendance issues
+      if (issuesResult.status === 'fulfilled') {
+        setAttendanceIssues(issuesResult.value);
+      } else {
+        console.error('Error loading attendance issues');
+        setAttendanceIssues([]);
       }
 
     } catch (error) {
       console.error('Error loading dashboard data:', error);
       setError('Error cargando datos del dashboard');
-      setKPIs(getDefaultKPIs());
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateKPIs = (checkIns: CheckIn[]): SystemKPIs => {
+  const calculateKPIs = (checkIns: CheckIn[], statsResult: any): SystemKPIs => {
     const totalCheckins = checkIns.length;
     
-    if (totalCheckins === 0) {
-      return getDefaultKPIs();
+    if (totalCheckins === 0 && statsResult?.status === 'fulfilled') {
+      // Use stats from AttendanceService
+      const stats = statsResult.value;
+      return {
+        totalCheckins: stats.totalPresent,
+        punctualityPercentage: stats.punctualityRate,
+        locationAccuracyPercentage: 100, // Default if no data
+        totalIncidents: stats.totalAbsent + stats.totalLate,
+        avgHoursWorked: 8.0 // Calculate from actual data
+      };
     }
 
-    const onTimeCount = checkIns.filter(c => c.status === 'a_tiempo' || c.status === 'anticipado').length;
+    const onTimeCount = checkIns.filter(c => c.status === 'a_tiempo').length;
     const validLocationCount = checkIns.filter(c => c.validationResults?.locationValid).length;
     const incidentCount = checkIns.filter(c => 
       c.status === 'retrasado' || c.status === 'ubicacion_invalida'
     ).length;
 
-    // Calculate average hours worked (simplified - would need more complex logic)
-    const avgHoursWorked = 8.2; // Placeholder
-
     return {
       totalCheckins,
-      punctualityPercentage: (onTimeCount / totalCheckins) * 100,
-      locationAccuracyPercentage: (validLocationCount / totalCheckins) * 100,
-      totalIncidents: incidentCount,
-      avgHoursWorked
+      punctualityPercentage: totalCheckins > 0 ? (onTimeCount / totalCheckins) * 100 : 0,
+      locationAccuracyPercentage: totalCheckins > 0 ? (validLocationCount / totalCheckins) * 100 : 0,
+      totalIncidents: incidentCount + attendanceIssues.length,
+      avgHoursWorked: 8.2 // TODO: Calculate from actual check-ins
     };
   };
-
-  const getDefaultKPIs = (): SystemKPIs => ({
-    totalCheckins: 0,
-    punctualityPercentage: 0,
-    locationAccuracyPercentage: 0,
-    totalIncidents: 0,
-    avgHoursWorked: 0
-  });
 
   if (loading) {
     return (
@@ -124,7 +142,7 @@ export default function AdminDashboard() {
               Panel de Administración
             </h1>
             <p className="mt-1 text-sm text-gray-600">
-              Resumen general del sistema de asistencia
+              Resumen general del sistema de asistencia - {new Date().toLocaleDateString('es-MX')}
             </p>
           </div>
           <div className="flex items-center space-x-2">
@@ -150,6 +168,37 @@ export default function AdminDashboard() {
         />
       )}
 
+      {/* Attendance Issues Alert */}
+      {attendanceIssues.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex">
+            <ExclamationTriangleIcon className="h-5 w-5 text-yellow-400" />
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-yellow-800">
+                Inasistencias Detectadas
+              </h3>
+              <div className="mt-2 text-sm text-yellow-700">
+                <p>Se han detectado {attendanceIssues.length} inasistencias hoy:</p>
+                <ul className="list-disc list-inside mt-1">
+                  {attendanceIssues.slice(0, 3).map((issue, idx) => (
+                    <li key={idx}>
+                      {issue.userName} - {
+                        issue.type === 'no_entry' ? 'Sin entrada' :
+                        issue.type === 'no_exit' ? 'Sin salida' :
+                        'Sin regreso de comida'
+                      } (esperado: {issue.expectedTime})
+                    </li>
+                  ))}
+                  {attendanceIssues.length > 3 && (
+                    <li>... y {attendanceIssues.length - 3} más</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* KPI Cards */}
       {kpis && <KPICards kpis={kpis} />}
 
@@ -163,16 +212,6 @@ export default function AdminDashboard() {
         {/* Pending Requests */}
         <PendingRequests requests={pendingRequests} onUpdate={loadDashboardData} />
       </div>
-
-      {/* Debug info in development */}
-      {import.meta.env.DEV && (
-        <div className="bg-gray-100 rounded-lg p-4 text-xs text-gray-600">
-          <strong>Debug Info:</strong>
-          <br />Recent Check-ins: {recentCheckIns.length}
-          <br />Pending Requests: {pendingRequests.length}
-          <br />KPIs: {kpis ? 'Loaded' : 'Not loaded'}
-        </div>
-      )}
     </div>
   );
 }

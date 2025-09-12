@@ -1,4 +1,4 @@
-// src/pages/employee/SimpleCheckIn.tsx - Versión con imports corregidos
+// src/pages/employee/SimpleCheckIn.tsx - COMPLETO
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirestoreService } from '../../services/firestore';
@@ -23,6 +23,8 @@ export default function SimpleCheckIn() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showCameraInline, setShowCameraInline] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   
   // States for Time Off Request
   const [showTimeOffModal, setShowTimeOffModal] = useState(false);
@@ -43,7 +45,7 @@ export default function SimpleCheckIn() {
     loadKiosks();
   }, []);
 
-  // Request location permission on mount - mejorado para móviles
+  // Request location permission on mount
   useEffect(() => {
     const requestLocationOnLoad = async () => {
       if (!location && 'geolocation' in navigator) {
@@ -58,37 +60,73 @@ export default function SimpleCheckIn() {
     requestLocationOnLoad();
   }, [getCurrentLocation, location]);
 
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
   const loadKiosks = async () => {
     try {
       const kiosksList = await FirestoreService.getActiveKiosks();
       setKiosks(kiosksList);
     } catch (error) {
       console.error('Error loading kiosks:', error);
+      setError('Error cargando kioscos');
     }
   };
 
   // Filter kiosks by selected product
   const filteredKiosks = selectedProduct 
     ? kiosks.filter(k => k.productType === selectedProduct)
-    : kiosks;
+    : [];
 
-  // Camera functions
+  // Camera functions - CORREGIDAS
   const startCameraInline = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Detener cualquier stream anterior
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      
+      const constraints = {
         video: { 
-          facingMode,
+          facingMode: { exact: facingMode },
           width: { ideal: 1280 },
           height: { ideal: 720 }
-        }
-      });
+        },
+        audio: false
+      };
+      
+      // Intentar con facingMode exact, si falla, usar ideal
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (error) {
+        // Si falla con exact, intentar con ideal
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+      }
+      
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Esperar a que el video esté listo
+        await videoRef.current.play();
       }
       setShowCameraInline(true);
     } catch (error) {
-      alert('Error accediendo a la cámara. Por favor permite el acceso a la cámara en la configuración del navegador.');
+      console.error('Error accessing camera:', error);
+      setError('Error accediendo a la cámara. Por favor permite el acceso a la cámara.');
     }
   };
 
@@ -96,6 +134,9 @@ export default function SimpleCheckIn() {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setShowCameraInline(false);
   };
@@ -110,6 +151,12 @@ export default function SimpleCheckIn() {
       
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        // Si es cámara frontal, voltear horizontalmente
+        if (facingMode === 'user') {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+        }
+        
         ctx.drawImage(video, 0, 0);
         
         canvas.toBlob((blob) => {
@@ -119,6 +166,7 @@ export default function SimpleCheckIn() {
             setPhoto(url);
             setPhotoFile(file);
             stopCameraInline();
+            setError(null);
           }
         }, 'image/jpeg', 0.8);
       }
@@ -139,27 +187,43 @@ export default function SimpleCheckIn() {
     }
   };
 
+  // Validation function
+  const validateCheckIn = () => {
+    if (!selectedProduct) {
+      setError('Por favor selecciona un producto');
+      return false;
+    }
+    if (!selectedKiosk) {
+      setError('Por favor selecciona un kiosco');
+      return false;
+    }
+    if (!checkInType) {
+      setError('Por favor selecciona el tipo de registro');
+      return false;
+    }
+    if (!photoFile) {
+      setError('La fotografía es obligatoria');
+      return false;
+    }
+    if (!location) {
+      setError('No se pudo obtener la ubicación. Por favor activa el GPS');
+      return false;
+    }
+    setError(null);
+    return true;
+  };
+
   // Handle check-in submission
   const handleCheckIn = async () => {
     if (!user) return;
     
-    if (!selectedKiosk || !checkInType) {
-      alert('Por favor selecciona un kiosco y tipo de registro');
-      return;
-    }
-
-    if (!photoFile) {
-      alert('La fotografía es obligatoria para registrar check-in');
-      return;
-    }
-    
-    if (!location) {
-      alert('Ubicación requerida para registrar check-in');
+    if (!validateCheckIn()) {
       return;
     }
 
     try {
       setSubmitting(true);
+      setError(null);
       
       // Upload photo first
       let photoUrl: string | undefined;
@@ -167,7 +231,7 @@ export default function SimpleCheckIn() {
         photoUrl = await StorageService.uploadCheckInPhoto(
           user.id,
           photoFile,
-          `temp_${Date.now()}`
+          `checkin_${Date.now()}`
         );
       }
 
@@ -181,14 +245,14 @@ export default function SimpleCheckIn() {
         user.id,
         formData,
         {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          accuracy: location.accuracy
+          latitude: location!.latitude,
+          longitude: location!.longitude,
+          accuracy: location!.accuracy
         },
         photoUrl
       );
 
-      alert('✓ Check-in registrado exitosamente!');
+      setSuccess('✓ Check-in registrado exitosamente!');
       
       // Reset form
       setSelectedKiosk('');
@@ -197,9 +261,12 @@ export default function SimpleCheckIn() {
       setNotes('');
       removePhoto();
       stopCameraInline();
-    } catch (error) {
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccess(null), 5000);
+    } catch (error: any) {
       console.error('Error submitting check-in:', error);
-      alert('Error registrando check-in');
+      setError(error.message || 'Error registrando check-in');
     } finally {
       setSubmitting(false);
     }
@@ -249,7 +316,7 @@ export default function SimpleCheckIn() {
 
   // Handle date changes for Aviva Day
   useEffect(() => {
-    if (timeOffType === 'aviva_day') {
+    if (timeOffType === 'aviva_day' && startDate) {
       setEndDate(startDate);
     }
   }, [timeOffType, startDate]);
@@ -264,7 +331,7 @@ export default function SimpleCheckIn() {
     try {
       await getCurrentLocation();
     } catch (error) {
-      alert('Por favor permite el acceso a la ubicación cuando tu navegador lo solicite, o revisa la configuración de permisos.');
+      alert('Por favor permite el acceso a la ubicación en la configuración del navegador');
     }
   };
 
@@ -286,7 +353,7 @@ export default function SimpleCheckIn() {
                 href="/admin/dashboard"
                 className="bg-primary-500 hover:bg-primary-400 px-3 py-1 rounded text-sm"
               >
-                Panel de Admin
+                Panel Admin
               </a>
             )}
           </div>
@@ -294,6 +361,19 @@ export default function SimpleCheckIn() {
       </div>
 
       <div className="max-w-md mx-auto p-4 space-y-6">
+        
+        {/* Success/Error Messages */}
+        {success && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <p className="text-green-800">{success}</p>
+          </div>
+        )}
+        
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800">{error}</p>
+          </div>
+        )}
         
         {/* Location Status */}
         <div className="bg-white rounded-lg p-4 shadow-sm border">
@@ -317,10 +397,10 @@ export default function SimpleCheckIn() {
         <div className="bg-white rounded-lg p-6 shadow-sm border">
           <h2 className="text-lg font-semibold mb-4 text-center">Registrar Check-in</h2>
           
-          {/* Product Selection */}
+          {/* Product Selection - OBLIGATORIO */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Producto
+              Producto <span className="text-red-500">*</span>
             </label>
             <select 
               value={selectedProduct}
@@ -329,6 +409,7 @@ export default function SimpleCheckIn() {
                 setSelectedKiosk(''); // Reset kiosk when product changes
               }}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              required
             >
               <option value="">Selecciona un producto</option>
               {Object.entries(PRODUCT_TYPES).map(([key, label]) => (
@@ -337,35 +418,39 @@ export default function SimpleCheckIn() {
             </select>
           </div>
 
-          {/* Kiosk Selection */}
+          {/* Kiosk Selection - OBLIGATORIO */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Kiosco
+              Kiosco <span className="text-red-500">*</span>
             </label>
             <select 
               value={selectedKiosk}
               onChange={(e) => setSelectedKiosk(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               disabled={!selectedProduct}
+              required
             >
-              <option value="">Selecciona un kiosco</option>
+              <option value="">
+                {selectedProduct ? "Selecciona un kiosco" : "Primero selecciona un producto"}
+              </option>
               {filteredKiosks.map(kiosk => (
                 <option key={kiosk.id} value={kiosk.id}>
-                  {kiosk.name} ({kiosk.id})
+                  {kiosk.name} - {kiosk.city} ({kiosk.id})
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Check-in Type */}
+          {/* Check-in Type - OBLIGATORIO */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tipo de Registro
+              Tipo de Registro <span className="text-red-500">*</span>
             </label>
             <select 
               value={checkInType}
               onChange={(e) => setCheckInType(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              required
             >
               <option value="">Selecciona el tipo</option>
               {Object.entries(CHECK_IN_TYPES).map(([key, label]) => (
@@ -398,11 +483,12 @@ export default function SimpleCheckIn() {
                     playsInline
                     muted
                     className="w-full h-64 object-cover rounded-lg bg-black"
+                    style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
                   />
                   <button
                     type="button"
                     onClick={switchCamera}
-                    className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-2 text-sm hover:bg-black hover:bg-opacity-70"
+                    className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-70"
                   >
                     🔄
                   </button>
@@ -421,13 +507,18 @@ export default function SimpleCheckIn() {
                     onClick={capturePhoto}
                     className="flex-1 bg-primary-600 text-white py-2 px-4 rounded-lg hover:bg-primary-700"
                   >
-                    Capturar Foto
+                    📸 Capturar
                   </button>
                 </div>
               </div>
             ) : (
               <div className="relative">
-                <img src={photo} alt="Captured" className="w-full h-40 object-cover rounded-lg" />
+                <img 
+                  src={photo} 
+                  alt="Captured" 
+                  className="w-full h-48 object-cover rounded-lg"
+                  style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+                />
                 <button
                   type="button"
                   onClick={removePhoto}
@@ -449,10 +540,10 @@ export default function SimpleCheckIn() {
             )}
           </div>
 
-          {/* Notes */}
+          {/* Notes - OPCIONAL */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Notas (Opcional)
+              Notas <span className="text-gray-400">(Opcional)</span>
             </label>
             <textarea
               value={notes}
@@ -464,13 +555,13 @@ export default function SimpleCheckIn() {
           </div>
 
           <p className="text-xs text-gray-500 mb-4 text-center">
-            Asegúrate de estar en el kiosco correcto y tomar la foto antes de registrar
+            Todos los campos con * son obligatorios
           </p>
 
           {/* Check-in Button */}
           <button
             onClick={handleCheckIn}
-            disabled={submitting || !location || !photoFile}
+            disabled={submitting || !location || !photoFile || !selectedProduct || !selectedKiosk || !checkInType}
             className="w-full bg-primary-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? 'Registrando...' : 'Registrar Check-in'}
@@ -504,7 +595,7 @@ export default function SimpleCheckIn() {
             {/* Type Selection */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Tipo de Solicitud
+                Tipo de Solicitud <span className="text-red-500">*</span>
               </label>
               <select 
                 value={timeOffType}
@@ -521,24 +612,26 @@ export default function SimpleCheckIn() {
             {/* Date Range */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Fecha de Inicio
+                Fecha de Inicio <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
               />
             </div>
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Fecha de Fin
+                Fecha de Fin <span className="text-red-500">*</span>
               </label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
+                min={startDate || new Date().toISOString().split('T')[0]}
                 disabled={timeOffType === 'aviva_day'}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
               />
@@ -551,7 +644,7 @@ export default function SimpleCheckIn() {
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Motivo {timeOffType === 'incapacidad' && <span className="text-red-500">*</span>}
-                {(timeOffType === 'vacaciones' || timeOffType === 'aviva_day') && ' (Opcional)'}
+                {(timeOffType === 'vacaciones' || timeOffType === 'aviva_day') && <span className="text-gray-400">(Opcional)</span>}
               </label>
               <textarea
                 value={reason}
@@ -563,6 +656,7 @@ export default function SimpleCheckIn() {
                 }
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 rows={3}
+                required={timeOffType === 'incapacidad'}
               />
             </div>
 
@@ -589,8 +683,8 @@ export default function SimpleCheckIn() {
               <button
                 type="button"
                 onClick={handleTimeOffRequest}
-                disabled={submittingTimeOff}
-                className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                disabled={submittingTimeOff || !timeOffType || !startDate || !endDate || (timeOffType === 'incapacidad' && !reason)}
+                className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submittingTimeOff ? 'Enviando...' : 'Enviar Solicitud'}
               </button>
