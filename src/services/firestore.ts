@@ -81,13 +81,17 @@ export class FirestoreService {
         productType: kiosk.productType,
         type: formData.type,
         timestamp: serverTimestamp(),
-        location,
+        location: {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          ...(location.accuracy !== undefined && { accuracy: location.accuracy }),
+      },
         photoUrl,
-        notes: formData.notes,
+        notes: formData.notes ?? "", // 👈 FIX aplicado aquí
         status: validationResults.status || this.determineCheckInStatus(validationResults),
         validationResults,
         createdAt: serverTimestamp()
-      };
+    };
 
       const docRef = await addDoc(collection(db, 'checkins'), checkInData);
       console.log('Check-in created with ID:', docRef.id);
