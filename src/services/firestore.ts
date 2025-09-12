@@ -51,15 +51,23 @@ export class FirestoreService {
   ): Promise<string> {
     try {
       console.log('Creating check-in for user:', userId);
+      console.log('Kiosk ID from form:', formData.kioskId);
 
-      // Get user and kiosk data
+      // Get user and kiosk data - CORREGIDO: usar getKioskById en lugar de getDocument
       const [user, kiosk] = await Promise.all([
         this.getDocument<User>('users', userId),
-        this.getDocument<Kiosk>('kiosks', formData.kioskId)
+        this.getKioskById(formData.kioskId) // ✅ Usar método correcto para buscar por ID personalizado
       ]);
 
-      if (!user || !kiosk) {
-        throw new Error('Usuario o kiosco no encontrado');
+      console.log('User found:', !!user, user?.name);
+      console.log('Kiosk found:', !!kiosk, kiosk?.name);
+
+      if (!user) {
+        throw new Error('Usuario no encontrado. Verifica que tu perfil esté correctamente registrado.');
+      }
+
+      if (!kiosk) {
+        throw new Error(`Kiosk no encontrado. El kiosk "${formData.kioskId}" no existe o está inactivo.`);
       }
 
       // Calculate validation results - PASS userId
@@ -310,8 +318,8 @@ export class FirestoreService {
         );
         const querySnapshot = await getDocs(q);
         return querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
+          ...doc.data(),
+          documentId: doc.id // Mantener ID del documento separado del ID personalizado
         })) as Kiosk[];
       } catch (orderError) {
         console.log('No orderBy index, trying simple query...');
@@ -319,8 +327,8 @@ export class FirestoreService {
         const q = query(collection(db, 'kiosks'));
         const querySnapshot = await getDocs(q);
         return querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
+          ...doc.data(),
+          documentId: doc.id // Mantener ID del documento separado del ID personalizado
         })) as Kiosk[];
       }
     } catch (error) {
@@ -344,26 +352,32 @@ export class FirestoreService {
   }
 
   /**
-   * Get kiosk by custom ID (not document ID)
+   * Get kiosk by custom ID (not document ID) - CORREGIDO
    */
   static async getKioskById(kioskId: string): Promise<Kiosk | null> {
     try {
+      console.log('Searching for kiosk with ID:', kioskId);
+      
       const q = query(
         collection(db, 'kiosks'),
-        where('id', '==', kioskId)
+        where('id', '==', kioskId) // Buscar por el campo 'id' personalizado, no el documento ID
       );
       
       const querySnapshot = await getDocs(q);
       
       if (querySnapshot.empty) {
+        console.log('No kiosk found with ID:', kioskId);
         return null;
       }
       
-      const doc = querySnapshot.docs[0];
-      return {
-        id: doc.id,
-        ...doc.data()
+      const docSnap = querySnapshot.docs[0];
+      const kiosk = {
+        ...docSnap.data(),
+        documentId: docSnap.id // Mantener referencia al ID del documento para operaciones futuras
       } as Kiosk;
+      
+      console.log('Kiosk found:', kiosk.name, 'at', kiosk.city);
+      return kiosk;
     } catch (error) {
       console.error('Error getting kiosk by ID:', error);
       return null;
@@ -391,15 +405,15 @@ export class FirestoreService {
       // Verificar si ya existe un kiosko con ese ID
       const existingKiosk = await this.getKioskById(kioskData.id);
       
-      if (existingKiosk) {
-        // Actualizar kiosko existente
+      if (existingKiosk && existingKiosk.documentId) {
+        // Actualizar kiosko existente usando el documentId
         console.log('Updating existing kiosk:', kioskData.id);
-        const kioskRef = doc(db, 'kiosks', existingKiosk.id);
+        const kioskRef = doc(db, 'kiosks', existingKiosk.documentId);
         await updateDoc(kioskRef, {
           ...kioskData,
           updatedAt: serverTimestamp()
         });
-        return existingKiosk.id;
+        return existingKiosk.documentId;
       } else {
         // Crear nuevo kiosko
         console.log('Creating new kiosk:', kioskData.id);
@@ -437,9 +451,9 @@ export class FirestoreService {
         // Verificar si ya existe
         const existing = await this.getKioskById(kioskData.id);
         
-        if (existing) {
+        if (existing && existing.documentId) {
           // Actualizar existente
-          const kioskRef = doc(db, 'kiosks', existing.id);
+          const kioskRef = doc(db, 'kiosks', existing.documentId);
           batch.update(kioskRef, {
             ...kioskData,
             updatedAt: timestamp
