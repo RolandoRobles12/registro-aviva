@@ -1,4 +1,4 @@
-// src/pages/employee/SimpleCheckIn.tsx - COMPLETO
+// src/pages/employee/SimpleCheckIn.tsx - CÓDIGO COMPLETO CORREGIDO
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirestoreService } from '../../services/firestore';
@@ -22,7 +22,6 @@ export default function SimpleCheckIn() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showCameraInline, setShowCameraInline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   
@@ -34,8 +33,12 @@ export default function SimpleCheckIn() {
   const [reason, setReason] = useState('');
   const [submittingTimeOff, setSubmittingTimeOff] = useState(false);
   
-  // Camera states
+  // Camera states - CORREGIDOS CON PREVIEW
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+  const [showCameraPreview, setShowCameraPreview] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [takingPhoto, setTakingPhoto] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -60,11 +63,16 @@ export default function SimpleCheckIn() {
     requestLocationOnLoad();
   }, [getCurrentLocation, location]);
 
-  // Cleanup camera on unmount
+  // Cleanup effect for camera
   useEffect(() => {
     return () => {
+      console.log('Limpiando recursos de cámara...');
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+          console.log('Track detenido:', track.kind);
+        });
+        streamRef.current = null;
       }
     };
   }, []);
@@ -84,106 +92,192 @@ export default function SimpleCheckIn() {
     ? kiosks.filter(k => k.productType === selectedProduct)
     : [];
 
-  // Camera functions - CORREGIDAS
-  const startCameraInline = async () => {
+  // Camera functions - CORREGIDAS CON PREVIEW
+  const startCameraPreview = async () => {
     try {
+      setCameraError(null);
+      setCameraReady(false);
+      setShowCameraPreview(true);
+      
       // Detener cualquier stream anterior
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
       }
+      
+      console.log('Iniciando preview de cámara con facingMode:', facingMode);
       
       const constraints = {
         video: { 
-          facingMode: { exact: facingMode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 }
         },
         audio: false
       };
       
-      // Intentar con facingMode exact, si falla, usar ideal
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (error) {
-        // Si falla con exact, intentar con ideal
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: { ideal: facingMode },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: false
-        });
-      }
-      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        
         // Esperar a que el video esté listo
-        await videoRef.current.play();
+        videoRef.current.onloadedmetadata = () => {
+          if (videoRef.current) {
+            videoRef.current.play()
+              .then(() => {
+                setCameraReady(true);
+                console.log('Preview de cámara iniciado correctamente');
+              })
+              .catch((playError) => {
+                console.error('Error reproduciendo video:', playError);
+                setCameraError('Error iniciando el preview de la cámara');
+              });
+          }
+        };
+        
+        // Manejar errores del video
+        videoRef.current.onerror = () => {
+          setCameraError('Error en el stream de video');
+        };
       }
-      setShowCameraInline(true);
-    } catch (error) {
+      
+    } catch (error: any) {
       console.error('Error accessing camera:', error);
-      setError('Error accediendo a la cámara. Por favor permite el acceso a la cámara.');
+      let errorMessage = 'Error accediendo a la cámara';
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage = 'Permisos de cámara denegados. Por favor permite el acceso a la cámara.';
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = 'No se encontró ninguna cámara en el dispositivo.';
+      } else if (error.name === 'NotReadableError') {
+        errorMessage = 'La cámara está siendo usada por otra aplicación.';
+      } else if (error.name === 'OverconstrainedError') {
+        errorMessage = 'La configuración de cámara solicitada no está disponible.';
+      }
+      
+      setCameraError(errorMessage);
+      setError(errorMessage);
+      setShowCameraPreview(false);
     }
   };
 
-  const stopCameraInline = () => {
+  const stopCameraPreview = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        console.log('Track detenido:', track.kind);
+      });
       streamRef.current = null;
     }
+    
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    setShowCameraInline(false);
+    
+    setShowCameraPreview(false);
+    setCameraReady(false);
+    setCameraError(null);
   };
 
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
+  const capturePhotoFromPreview = async () => {
+    if (!videoRef.current || !canvasRef.current || !cameraReady) {
+      setError('La cámara no está lista. Inténtalo de nuevo.');
+      return;
+    }
+
+    try {
+      setTakingPhoto(true);
+      
       const canvas = canvasRef.current;
       const video = videoRef.current;
+      
+      // Verificar que el video tenga dimensiones válidas
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        setError('El video no está listo. Espera un momento y vuelve a intentar.');
+        return;
+      }
       
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
       const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Si es cámara frontal, voltear horizontalmente
-        if (facingMode === 'user') {
-          ctx.translate(canvas.width, 0);
-          ctx.scale(-1, 1);
-        }
-        
-        ctx.drawImage(video, 0, 0);
-        
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
-            const url = URL.createObjectURL(blob);
-            setPhoto(url);
-            setPhotoFile(file);
-            stopCameraInline();
-            setError(null);
-          }
-        }, 'image/jpeg', 0.8);
+      if (!ctx) {
+        setError('Error obteniendo contexto del canvas');
+        return;
       }
+      
+      // Limpiar el canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Si es cámara frontal, voltear horizontalmente
+      if (facingMode === 'user') {
+        ctx.save();
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      if (facingMode === 'user') {
+        ctx.restore();
+      }
+      
+      // Convertir a blob con buena calidad
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], `photo_${Date.now()}.jpg`, { 
+            type: 'image/jpeg' 
+          });
+          const url = canvas.toDataURL('image/jpeg', 0.8);
+          
+          setPhoto(url);
+          setPhotoFile(file);
+          stopCameraPreview(); // Detener preview después de capturar
+          setError(null);
+          setCameraError(null);
+          
+          console.log('Foto capturada exitosamente:', {
+            size: file.size,
+            type: file.type,
+            name: file.name,
+            dimensions: `${canvas.width}x${canvas.height}`
+          });
+        } else {
+          setError('Error generando la imagen');
+        }
+      }, 'image/jpeg', 0.8);
+      
+    } catch (error: any) {
+      console.error('Error capturing photo:', error);
+      setError('Error capturando la foto: ' + error.message);
+    } finally {
+      setTakingPhoto(false);
     }
   };
 
-  const switchCamera = () => {
-    stopCameraInline();
-    setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
-    setTimeout(startCameraInline, 100);
+  const switchCamera = async () => {
+    try {
+      stopCameraPreview();
+      setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+      
+      // Esperar un poco antes de iniciar la nueva cámara
+      setTimeout(() => {
+        startCameraPreview();
+      }, 500);
+    } catch (error) {
+      console.error('Error switching camera:', error);
+      setError('Error cambiando de cámara');
+    }
   };
 
   const removePhoto = () => {
     if (photo) {
-      URL.revokeObjectURL(photo);
       setPhoto(null);
       setPhotoFile(null);
+      setCameraError(null);
+      setError(null);
     }
   };
 
@@ -202,7 +296,7 @@ export default function SimpleCheckIn() {
       return false;
     }
     if (!photoFile) {
-      setError('La fotografía es obligatoria');
+      setError('La fotografía es obligatoria. Por favor toma una foto.');
       return false;
     }
     if (!location) {
@@ -260,7 +354,6 @@ export default function SimpleCheckIn() {
       setCheckInType('');
       setNotes('');
       removePhoto();
-      stopCameraInline();
       
       // Clear success message after 5 seconds
       setTimeout(() => setSuccess(null), 5000);
@@ -459,83 +552,221 @@ export default function SimpleCheckIn() {
             </select>
           </div>
 
-          {/* Photo Section - OBLIGATORIA */}
+          {/* Photo Section - OBLIGATORIA CON PREVIEW */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Fotografía <span className="text-red-500">*</span>
+              Fotografía de Evidencia <span className="text-red-500">*</span>
             </label>
             
-            {!showCameraInline && !photo ? (
-              <button
-                type="button"
-                onClick={startCameraInline}
-                className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-primary-500 hover:text-primary-500 flex items-center justify-center space-x-2"
-              >
-                <CameraIcon className="h-6 w-6" />
-                <span>Tomar Foto (Obligatorio)</span>
-              </button>
-            ) : showCameraInline ? (
+            {/* Mostrar errores de cámara */}
+            {cameraError && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800 text-sm">{cameraError}</p>
+                <div className="mt-2 flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCameraError(null);
+                      startCameraPreview();
+                    }}
+                    className="text-sm text-red-600 hover:text-red-800 underline"
+                  >
+                    Reintentar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCameraError(null);
+                      setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+                      setTimeout(startCameraPreview, 100);
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Probar otra cámara
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {!showCameraPreview && !photo ? (
+              // Botón inicial para abrir cámara
               <div className="space-y-3">
-                <div className="relative">
+                <button
+                  type="button"
+                  onClick={startCameraPreview}
+                  className="w-full p-6 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-primary-500 hover:text-primary-500 flex flex-col items-center justify-center space-y-2"
+                >
+                  <CameraIcon className="h-8 w-8" />
+                  <span className="font-medium">Abrir Cámara</span>
+                  <span className="text-xs text-gray-400">
+                    Toca para ver el preview y tomar foto
+                  </span>
+                </button>
+                
+                {/* Selector de cámara */}
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
+                    className="text-sm text-blue-600 hover:text-blue-800 underline flex items-center space-x-1"
+                  >
+                    <span>🔄</span>
+                    <span>Usar cámara {facingMode === 'environment' ? 'frontal' : 'trasera'}</span>
+                  </button>
+                </div>
+                
+                {/* Instrucciones */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-blue-800 text-sm font-medium mb-1">📸 Instrucciones:</p>
+                  <ul className="text-blue-700 text-xs space-y-1">
+                    <li>• Asegúrate de estar en el kiosco correcto</li>
+                    <li>• Podrás ver el preview antes de tomar la foto</li>
+                    <li>• Mantén el teléfono estable al capturar</li>
+                    <li>• Es obligatorio tomar una foto para cada check-in</li>
+                  </ul>
+                </div>
+              </div>
+            ) : showCameraPreview ? (
+              // Preview de cámara activo
+              <div className="space-y-3">
+                {/* Contenedor del video */}
+                <div className="relative bg-black rounded-lg overflow-hidden">
                   <video
                     ref={videoRef}
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-64 object-cover rounded-lg bg-black"
-                    style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+                    className="w-full h-64 object-cover"
+                    style={{ 
+                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'none'
+                    }}
                   />
-                  <button
-                    type="button"
-                    onClick={switchCamera}
-                    className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-70"
-                  >
-                    🔄
-                  </button>
+                  
+                  {/* Overlay de carga */}
+                  {!cameraReady && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                      <div className="text-white text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+                        <p className="text-sm">Iniciando cámara...</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Botón para cambiar cámara */}
+                  {cameraReady && (
+                    <button
+                      type="button"
+                      onClick={switchCamera}
+                      className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-70"
+                      title="Cambiar cámara"
+                    >
+                      🔄
+                    </button>
+                  )}
+                  
+                  {/* Indicador de cámara activa */}
+                  {cameraReady && (
+                    <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs">
+                      ● LIVE
+                    </div>
+                  )}
                 </div>
                 
+                {/* Botones de control */}
                 <div className="flex space-x-2">
                   <button
                     type="button"
-                    onClick={stopCameraInline}
-                    className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600"
+                    onClick={stopCameraPreview}
+                    className="flex-1 bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600"
                   >
                     Cancelar
                   </button>
                   <button
                     type="button"
-                    onClick={capturePhoto}
-                    className="flex-1 bg-primary-600 text-white py-2 px-4 rounded-lg hover:bg-primary-700"
+                    onClick={capturePhotoFromPreview}
+                    disabled={!cameraReady || takingPhoto}
+                    className="flex-1 bg-primary-600 text-white py-3 px-4 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    📸 Capturar
+                    {takingPhoto ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white inline-block mr-2"></div>
+                        Capturando...
+                      </>
+                    ) : (
+                      <>📸 Tomar Foto</>
+                    )}
                   </button>
                 </div>
+                
+                {/* Instrucciones durante preview */}
+                {cameraReady && (
+                  <p className="text-xs text-gray-500 text-center">
+                    Posiciónate correctamente y presiona "Tomar Foto"
+                  </p>
+                )}
               </div>
             ) : (
-              <div className="relative">
-                <img 
-                  src={photo} 
-                  alt="Captured" 
-                  className="w-full h-48 object-cover rounded-lg"
-                  style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
-                />
-                <button
-                  type="button"
-                  onClick={removePhoto}
-                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                >
-                  <XMarkIcon className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    removePhoto();
-                    startCameraInline();
-                  }}
-                  className="absolute bottom-2 right-2 bg-primary-500 text-white px-3 py-1 rounded text-sm hover:bg-primary-600"
-                >
-                  Tomar Nueva
-                </button>
+              // Mostrar foto capturada
+              <div className="space-y-3">
+                <div className="relative">
+                  <img 
+                    src={photo} 
+                    alt="Foto de evidencia capturada" 
+                    className="w-full h-48 object-cover rounded-lg border-2 border-green-200"
+                    onError={() => {
+                      setError('Error mostrando la imagen capturada');
+                      removePhoto();
+                    }}
+                  />
+                  
+                  {/* Indicador de éxito */}
+                  <div className="absolute top-2 left-2 bg-green-500 text-white rounded-full p-1">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  
+                  {/* Botón para eliminar */}
+                  <button
+                    type="button"
+                    onClick={removePhoto}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                    title="Eliminar foto"
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                
+                {/* Opciones para la foto capturada */}
+                <div className="flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      removePhoto();
+                      startCameraPreview();
+                    }}
+                    className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 text-sm"
+                  >
+                    📷 Tomar Nueva
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      removePhoto();
+                      setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+                      setTimeout(startCameraPreview, 100);
+                    }}
+                    className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 text-sm"
+                  >
+                    🔄 Cambiar Cámara
+                  </button>
+                </div>
+                
+                {/* Confirmación */}
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                  <p className="text-green-800 text-sm font-medium">✓ Foto lista para enviar</p>
+                  <p className="text-green-600 text-xs">La fotografía se adjuntará a tu check-in</p>
+                </div>
               </div>
             )}
           </div>
@@ -577,6 +808,9 @@ export default function SimpleCheckIn() {
           <span>Solicitar Días Libres</span>
         </button>
       </div>
+
+      {/* Canvas oculto para captura */}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
 
       {/* Time Off Request Modal */}
       {showTimeOffModal && (
@@ -692,9 +926,6 @@ export default function SimpleCheckIn() {
           </div>
         </div>
       )}
-
-      {/* Hidden canvas for photo capture */}
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   );
 }
