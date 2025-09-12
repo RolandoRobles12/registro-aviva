@@ -1,4 +1,4 @@
-// src/config/firebase.ts
+// src/config/firebase.ts - UPDATED VERSION
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
@@ -21,21 +21,16 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Configure Google Auth Provider
+// Configure Google Auth Provider with explicit parameters
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
 googleProvider.setCustomParameters({
-  hd: import.meta.env.VITE_ALLOWED_DOMAIN || 'avivacredito.com'
+  hd: import.meta.env.VITE_ALLOWED_DOMAIN || 'avivacredito.com',
+  prompt: 'select_account'
 });
 
-// COMENTADO PARA PRODUCCIÓN - NO USAR EMULADORES
-// if (import.meta.env.DEV) {
-//   try {
-//     connectAuthEmulator(auth, 'http://localhost:9099');
-//     connectFirestoreEmulator(db, 'localhost', 8080);
-//     connectStorageEmulator(storage, 'localhost', 9199);
-//   } catch (error) {
-//     console.log('Emulators already connected or not available');
-//   }
-// }
+// Set auth language
+auth.languageCode = 'es';
 
 export default app;

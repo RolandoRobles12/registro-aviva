@@ -1,4 +1,4 @@
-// src/contexts/AuthContext.tsx
+// src/contexts/AuthContext.tsx - UPDATED VERSION
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, AuthContextType } from '../types';
 import { AuthService } from '../services/auth';
@@ -14,12 +14,39 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = AuthService.onAuthStateChanged((user) => {
-      setUser(user);
-      setLoading(false);
-    });
+    // Handle redirect result first (if any)
+    const handleInitialAuth = async () => {
+      try {
+        // Check for redirect result
+        const redirectUser = await AuthService.handleRedirectResult();
+        if (redirectUser) {
+          setUser(redirectUser);
+          setLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.error('Error handling redirect:', error);
+      }
 
-    return unsubscribe;
+      // Set up auth state listener
+      const unsubscribe = AuthService.onAuthStateChanged((user) => {
+        setUser(user);
+        setLoading(false);
+      });
+
+      return unsubscribe;
+    };
+
+    const unsubscribe = handleInitialAuth();
+    
+    // Cleanup function
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      } else if (unsubscribe instanceof Promise) {
+        unsubscribe.then(fn => fn && fn());
+      }
+    };
   }, []);
 
   const signInWithGoogle = async (): Promise<void> => {
