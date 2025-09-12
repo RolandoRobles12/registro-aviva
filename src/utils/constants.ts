@@ -1,3 +1,5 @@
+// ACTUALIZAR src/utils/constants.ts - REMOVER DEFAULT_SYSTEM_CONFIG
+
 export const PRODUCT_TYPES = {
   BA: 'Bodega Aurrera',
   Aviva_Contigo: 'Aviva Contigo',
@@ -49,9 +51,8 @@ export const MEXICAN_STATES = [
   'Veracruz', 'Yucatán', 'Zacatecas'
 ];
 
-export const DEFAULT_SYSTEM_CONFIG = {
-  toleranceMinutes: 5,
-  severeDelayThreshold: 20,
-  defaultRadius: 150,
-  restDay: 'sunday'
-};
+
+// ✅ Solo mantener constantes que realmente no cambian
+export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+export const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+export const GPS_ACCURACY_THRESHOLD = 100; // metros

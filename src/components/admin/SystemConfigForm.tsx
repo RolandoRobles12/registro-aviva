@@ -3,8 +3,8 @@ import { useForm } from '../../hooks';
 import { Button, Input, Select, Alert } from '../ui';
 import { FirestoreService } from '../../services/firestore';
 import { SystemConfig, ProductType } from '../../types';
-import { PRODUCT_TYPES, DEFAULT_SYSTEM_CONFIG } from '../../utils/constants';
-import { ArrowDownTrayIcon as SaveIcon } from '@heroicons/react/24/outline';
+import { PRODUCT_TYPES } from '../../utils/constants';
+import { ArrowDownTrayIcon as SaveIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 export function SystemConfigForm() {
   const [configs, setConfigs] = useState<Record<string, SystemConfig>>({});
@@ -14,6 +14,36 @@ export function SystemConfigForm() {
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Valores por defecto SOLO para inicialización
+  const getDefaultConfig = (): Partial<SystemConfig> => ({
+    toleranceMinutes: 5,
+    severeDelayThreshold: 20,
+    defaultRadius: 150,
+    restDay: 'sunday',
+    // NUEVAS configuraciones de ausencias
+    absenceRules: {
+      noEntryAfterMinutes: 60,
+      noExitAfterMinutes: 120,
+    },
+    autoCloseRules: {
+      closeAfterMinutes: 60,
+      markAsAbsent: true,
+    },
+    lunchRules: {
+      maxDurationMinutes: 90,
+    },
+    notificationRules: {
+      notifyOnAbsence: true,
+      notifyOnLateExit: false,
+    },
+    alertRules: {
+      generateOnIrregularities: true,
+    },
+    approvalRules: {
+      requireForLateExit: false,
+    }
+  });
+
   const {
     values,
     errors,
@@ -21,9 +51,9 @@ export function SystemConfigForm() {
     setValue,
     reset
   } = useForm<Partial<SystemConfig>>(
-    DEFAULT_SYSTEM_CONFIG,
+    getDefaultConfig(),
     (values) => {
-      const fieldErrors: Partial<Record<keyof SystemConfig, string>> = {};
+      const fieldErrors: Partial<Record<string, string>> = {};
       
       if (!values.toleranceMinutes || values.toleranceMinutes < 0 || values.toleranceMinutes > 60) {
         fieldErrors.toleranceMinutes = 'Debe ser entre 0 y 60 minutos';
@@ -35,6 +65,23 @@ export function SystemConfigForm() {
       
       if (!values.defaultRadius || values.defaultRadius < 50 || values.defaultRadius > 1000) {
         fieldErrors.defaultRadius = 'Debe ser entre 50 y 1000 metros';
+      }
+
+      // Validaciones para las nuevas reglas
+      if (values.absenceRules?.noEntryAfterMinutes && (values.absenceRules.noEntryAfterMinutes < 0 || values.absenceRules.noEntryAfterMinutes > 480)) {
+        fieldErrors['absenceRules.noEntryAfterMinutes'] = 'Debe ser entre 0 y 480 minutos (8 horas)';
+      }
+
+      if (values.absenceRules?.noExitAfterMinutes && (values.absenceRules.noExitAfterMinutes < 0 || values.absenceRules.noExitAfterMinutes > 480)) {
+        fieldErrors['absenceRules.noExitAfterMinutes'] = 'Debe ser entre 0 y 480 minutos (8 horas)';
+      }
+
+      if (values.autoCloseRules?.closeAfterMinutes && (values.autoCloseRules.closeAfterMinutes < 0 || values.autoCloseRules.closeAfterMinutes > 240)) {
+        fieldErrors['autoCloseRules.closeAfterMinutes'] = 'Debe ser entre 0 y 240 minutos (4 horas)';
+      }
+
+      if (values.lunchRules?.maxDurationMinutes && (values.lunchRules.maxDurationMinutes < 30 || values.lunchRules.maxDurationMinutes > 180)) {
+        fieldErrors['lunchRules.maxDurationMinutes'] = 'Debe ser entre 30 y 180 minutos (3 horas)';
       }
       
       return fieldErrors;
@@ -66,14 +113,9 @@ export function SystemConfigForm() {
   useEffect(() => {
     const config = configs[selectedProduct];
     if (config) {
-      reset({
-        toleranceMinutes: config.toleranceMinutes,
-        severeDelayThreshold: config.severeDelayThreshold,
-        defaultRadius: config.defaultRadius,
-        restDay: config.restDay
-      });
+      reset(config);
     } else {
-      reset(DEFAULT_SYSTEM_CONFIG);
+      reset(getDefaultConfig());
     }
   }, [selectedProduct, configs, reset]);
 
@@ -136,6 +178,17 @@ export function SystemConfigForm() {
       setSaving(false);
     }
   });
+
+  const handleNestedValueChange = (path: string, value: any) => {
+    const keys = path.split('.');
+    if (keys.length === 2) {
+      const [parent, child] = keys;
+      setValue(parent as any, {
+        ...((values as any)[parent] || {}),
+        [child]: value
+      });
+    }
+  };
 
   if (loading) {
     return (
@@ -217,6 +270,136 @@ export function SystemConfigForm() {
           />
         </div>
 
+        {/* NUEVA SECCIÓN: Configuración de Inasistencias y Ausencias */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">
+            Configuración de Inasistencias y Ausencias
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Input
+              label="Inasistencia por Falta de Entrada (minutos)"
+              type="number"
+              min="0"
+              max="480"
+              value={values.absenceRules?.noEntryAfterMinutes || ''}
+              onChange={(e) => handleNestedValueChange('absenceRules.noEntryAfterMinutes', parseInt(e.target.value) || 60)}
+              error={errors['absenceRules.noEntryAfterMinutes']}
+              helpText="Si no hay registro de entrada después de X minutos del horario, se marca como ausencia"
+            />
+
+            <Input
+              label="Ausencia por Falta de Salida (minutos)"
+              type="number"
+              min="0"
+              max="480"
+              value={values.absenceRules?.noExitAfterMinutes || ''}
+              onChange={(e) => handleNestedValueChange('absenceRules.noExitAfterMinutes', parseInt(e.target.value) || 120)}
+              error={errors['absenceRules.noExitAfterMinutes']}
+              helpText="Si no hay registro de salida después de X minutos del horario, se marca como ausencia parcial"
+            />
+
+            <Input
+              label="Cierre Automático (minutos después de salida)"
+              type="number"
+              min="0"
+              max="240"
+              value={values.autoCloseRules?.closeAfterMinutes || ''}
+              onChange={(e) => handleNestedValueChange('autoCloseRules.closeAfterMinutes', parseInt(e.target.value) || 60)}
+              error={errors['autoCloseRules.closeAfterMinutes']}
+              helpText="Minutos después del horario de salida para cerrar jornada automáticamente"
+            />
+
+            <Input
+              label="Tiempo Máximo de Comida (minutos)"
+              type="number"
+              min="30"
+              max="180"
+              value={values.lunchRules?.maxDurationMinutes || ''}
+              onChange={(e) => handleNestedValueChange('lunchRules.maxDurationMinutes', parseInt(e.target.value) || 90)}
+              error={errors['lunchRules.maxDurationMinutes']}
+              helpText="Tiempo máximo permitido para el período de comida"
+            />
+          </div>
+
+          {/* Opciones Booleanas */}
+          <div className="mt-6 space-y-4">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="markAsAbsentOnMissingExit"
+                checked={values.autoCloseRules?.markAsAbsent || false}
+                onChange={(e) => handleNestedValueChange('autoCloseRules.markAsAbsent', e.target.checked)}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="markAsAbsentOnMissingExit" className="ml-2 text-sm font-medium text-gray-700">
+                Marcar como ausente si no hay registro de salida
+              </label>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="notifyAdminsOnAbsence"
+                checked={values.notificationRules?.notifyOnAbsence || false}
+                onChange={(e) => handleNestedValueChange('notificationRules.notifyOnAbsence', e.target.checked)}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="notifyAdminsOnAbsence" className="ml-2 text-sm font-medium text-gray-700">
+                Notificar a administradores cuando se detecte una ausencia
+              </label>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="generateAlertsOnIrregularities"
+                checked={values.alertRules?.generateOnIrregularities || false}
+                onChange={(e) => handleNestedValueChange('alertRules.generateOnIrregularities', e.target.checked)}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="generateAlertsOnIrregularities" className="ml-2 text-sm font-medium text-gray-700">
+                Generar alertas automáticas por irregularidades
+              </label>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="requireApprovalForLateCheckOut"
+                checked={values.approvalRules?.requireForLateExit || false}
+                onChange={(e) => handleNestedValueChange('approvalRules.requireForLateExit', e.target.checked)}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="requireApprovalForLateCheckOut" className="ml-2 text-sm font-medium text-gray-700">
+                Requerir aprobación para registros de salida tardíos
+              </label>
+            </div>
+          </div>
+
+          {/* Información Adicional */}
+          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-md p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <ExclamationTriangleIcon className="h-5 w-5 text-blue-400" />
+              </div>
+              <div className="ml-3">
+                <h4 className="text-sm font-medium text-blue-800">
+                  Funcionamiento de las Reglas
+                </h4>
+                <div className="mt-2 text-sm text-blue-700">
+                  <ul className="list-disc list-inside space-y-1">
+                    <li><strong>Inasistencia por Entrada:</strong> Si el empleado no registra entrada después del tiempo configurado, se marca automáticamente como ausente</li>
+                    <li><strong>Ausencia por Salida:</strong> Si no hay registro de salida después del tiempo límite, se considera ausencia parcial</li>
+                    <li><strong>Cierre Automático:</strong> El sistema cierra automáticamente la jornada después del tiempo configurado</li>
+                    <li><strong>Tiempo de Comida:</strong> Si el empleado excede el tiempo máximo de comida, se genera una alerta</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Schedule Settings */}
         <div className="bg-gray-50 rounded-lg p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">
@@ -252,10 +435,8 @@ export function SystemConfigForm() {
               <p className="font-medium text-blue-900">{values.defaultRadius} m</p>
             </div>
             <div>
-              <span className="text-blue-700">Día Descanso:</span>
-              <p className="font-medium text-blue-900">
-                {restDayOptions.find(opt => opt.value === values.restDay)?.label}
-              </p>
+              <span className="text-blue-700">Ausencia Entrada:</span>
+              <p className="font-medium text-blue-900">{values.absenceRules?.noEntryAfterMinutes} min</p>
             </div>
           </div>
         </div>

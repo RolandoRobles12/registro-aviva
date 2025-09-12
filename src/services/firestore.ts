@@ -1,4 +1,4 @@
-// src/services/firestore.ts - Servicio completo corregido
+// src/services/firestore.ts - Servicio completo corregido y actualizado
 import {
   collection,
   doc,
@@ -7,6 +7,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  setDoc,
   query,
   where,
   orderBy,
@@ -481,15 +482,53 @@ export class FirestoreService {
     }
   }
 
-  // ================== SYSTEM CONFIG ==================
+  // ================== SYSTEM CONFIG - ACTUALIZADO ==================
 
   /**
-   * Get system configuration
+   * Get system configuration with fallback to defaults
    */
   static async getSystemConfig(productType?: string): Promise<SystemConfig | null> {
     try {
       const configId = productType || 'global';
-      return await this.getDocument<SystemConfig>('system_config', configId);
+      const config = await this.getDocument<SystemConfig>('system_config', configId);
+      
+      if (config) {
+        return config;
+      }
+
+      // Si no existe configuración, retornar valores por defecto para inicializar
+      return {
+        toleranceMinutes: 5,
+        severeDelayThreshold: 20,
+        defaultRadius: 150,
+        restDay: 'sunday',
+        
+        // Valores por defecto para las nuevas reglas
+        absenceRules: {
+          noEntryAfterMinutes: 60,
+          noExitAfterMinutes: 120,
+        },
+        autoCloseRules: {
+          closeAfterMinutes: 60,
+          markAsAbsent: true,
+        },
+        lunchRules: {
+          maxDurationMinutes: 90,
+        },
+        notificationRules: {
+          notifyOnAbsence: true,
+          notifyOnLateExit: false,
+        },
+        alertRules: {
+          generateOnIrregularities: true,
+        },
+        approvalRules: {
+          requireForLateExit: false,
+        },
+
+        updatedAt: Timestamp.now(),
+        updatedBy: 'system'
+      } as SystemConfig;
     } catch (error) {
       console.error('Error getting system config:', error);
       return null;
@@ -497,7 +536,7 @@ export class FirestoreService {
   }
 
   /**
-   * Update system configuration
+   * Update system configuration - ACTUALIZADO para manejar nested objects
    */
   static async updateSystemConfig(
     configData: Partial<SystemConfig>, 
@@ -506,13 +545,54 @@ export class FirestoreService {
   ): Promise<void> {
     try {
       const configId = productType || 'global';
-      await updateDoc(doc(db, 'system_config', configId), {
+      
+      // Preparar los datos para guardar, manejando objetos anidados
+      const dataToSave = {
         ...configData,
         updatedAt: serverTimestamp(),
         updatedBy: updatedBy || 'system'
-      });
+      };
+
+      // Usar setDoc con merge para crear o actualizar
+      const configRef = doc(db, 'system_config', configId);
+      await setDoc(configRef, dataToSave, { merge: true });
+
+      console.log(`✅ Configuración guardada para: ${configId}`);
     } catch (error) {
       console.error('Error updating system config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * NUEVO: Get attendance rules specifically
+   */
+  static async getAttendanceRules(productType?: string): Promise<SystemConfig['absenceRules'] | null> {
+    try {
+      const config = await this.getSystemConfig(productType);
+      return config?.absenceRules || null;
+    } catch (error) {
+      console.error('Error getting attendance rules:', error);
+      return null;
+    }
+  }
+
+  /**
+   * NUEVO: Update only attendance rules
+   */
+  static async updateAttendanceRules(
+    rules: SystemConfig['absenceRules'], 
+    productType?: string,
+    updatedBy?: string
+  ): Promise<void> {
+    try {
+      await this.updateSystemConfig(
+        { absenceRules: rules },
+        productType,
+        updatedBy
+      );
+    } catch (error) {
+      console.error('Error updating attendance rules:', error);
       throw error;
     }
   }
