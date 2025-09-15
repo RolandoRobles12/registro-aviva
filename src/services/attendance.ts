@@ -1,4 +1,4 @@
-// src/services/attendance.ts - ARCHIVO COMPLETO CON REGLAS DINÁMICAS
+// src/services/attendance.ts - ARCHIVO COMPLETO CON REGLAS DINÁMICAS Y CORRECCIONES
 import { 
   collection, 
   query, 
@@ -370,7 +370,7 @@ export class AttendanceService {
   }
 
   /**
-   * Get attendance statistics
+   * ✅ CORREGIDO: Get attendance statistics
    */
   static async getAttendanceStats(dateRange?: { start: Date; end: Date }): Promise<AttendanceStats> {
     try {
@@ -379,16 +379,32 @@ export class AttendanceService {
       const end = dateRange?.end || new Date();
       end.setHours(23, 59, 59, 999);
 
-      // Get all check-ins in range
-      const checkInsQuery = query(
+      console.log('📊 Calculando estadísticas para rango:', start.toISOString(), 'a', end.toISOString());
+
+      // 🔍 1. Obtener TODOS los check-ins del rango (no solo entrada)
+      const allCheckInsQuery = query(
         collection(db, 'checkins'),
         where('timestamp', '>=', Timestamp.fromDate(start)),
         where('timestamp', '<=', Timestamp.fromDate(end)),
-        where('type', '==', 'entrada')
+        orderBy('timestamp', 'desc')
       );
-      const checkInsSnapshot = await getDocs(checkInsQuery);
-      
-      // Get all attendance issues in range
+      const allCheckInsSnapshot = await getDocs(allCheckInsQuery);
+      const allCheckIns = allCheckInsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as CheckIn[];
+
+      console.log('📈 Total check-ins encontrados:', allCheckIns.length);
+
+      // 🔍 2. Filtrar solo check-ins de ENTRADA para calcular asistencia
+      const entryCheckIns = allCheckIns.filter(c => c.type === 'entrada');
+      console.log('📈 Check-ins de entrada:', entryCheckIns.length);
+
+      // 🔍 3. Obtener usuarios únicos que registraron entrada
+      const uniqueUsers = new Set(entryCheckIns.map(c => c.userId));
+      const totalPresent = uniqueUsers.size;
+
+      // 🔍 4. Obtener issues de ausencia del mismo rango
       const issuesQuery = query(
         collection(db, 'attendance_issues'),
         where('date', '>=', Timestamp.fromDate(start)),
@@ -397,57 +413,70 @@ export class AttendanceService {
         where('resolved', '==', false)
       );
       const issuesSnapshot = await getDocs(issuesQuery);
-      
-      // Get all active users
+      const totalAbsent = issuesSnapshot.size;
+
+      console.log('📈 Ausencias detectadas:', totalAbsent);
+
+      // 🔍 5. Obtener todos los usuarios activos para calcular esperado
       const usersQuery = query(
         collection(db, 'users'),
         where('status', '==', 'active')
       );
       const usersSnapshot = await getDocs(usersQuery);
       const totalUsers = usersSnapshot.size;
-      
-      // Calculate work days in range
+
+      // 🔍 6. Calcular días laborales en el rango (simplificado)
       let workDays = 0;
       const current = new Date(start);
       while (current <= end) {
-        // Simplified - check if it's not Sunday
-        // In production, check each product's schedule
+        // Excluir domingos (día 0) como no laboral
         if (current.getDay() !== 0) {
           workDays++;
         }
         current.setDate(current.getDate() + 1);
       }
-      
+
       const totalExpected = totalUsers * workDays;
-      const totalPresent = checkInsSnapshot.size;
-      const totalAbsent = issuesSnapshot.size;
-      
-      // Count late and early check-ins
+
+      // 🔍 7. Analizar puntualidad de los check-ins de entrada
       let totalLate = 0;
       let totalEarly = 0;
-      
-      checkInsSnapshot.docs.forEach(doc => {
-        const checkIn = doc.data() as CheckIn;
-        if (checkIn.status === 'retrasado') {
-          totalLate++;
-        } else if (checkIn.status === 'anticipado') {
-          totalEarly++;
+      let totalOnTime = 0;
+
+      entryCheckIns.forEach(checkIn => {
+        switch (checkIn.status) {
+          case 'retrasado':
+            totalLate++;
+            break;
+          case 'anticipado':
+            totalEarly++;
+            break;
+          case 'a_tiempo':
+            totalOnTime++;
+            break;
         }
       });
-      
-      const totalOnTime = totalPresent - totalLate - totalEarly;
-      
-      return {
+
+      // 🔍 8. Calcular porcentajes
+      const attendanceRate = totalExpected > 0 ? (totalPresent / totalExpected) * 100 : 0;
+      const punctualityRate = totalPresent > 0 ? (totalOnTime / totalPresent) * 100 : 0;
+
+      const stats = {
         totalExpected,
         totalPresent,
         totalAbsent,
         totalLate,
         totalEarly,
-        attendanceRate: totalExpected > 0 ? (totalPresent / totalExpected) * 100 : 0,
-        punctualityRate: totalPresent > 0 ? (totalOnTime / totalPresent) * 100 : 0
+        attendanceRate,
+        punctualityRate
       };
+
+      console.log('📊 Estadísticas calculadas:', stats);
+      return stats;
+
     } catch (error) {
-      console.error('Error getting attendance stats:', error);
+      console.error('❌ Error getting attendance stats:', error);
+      // Retornar estadísticas vacías en caso de error
       return {
         totalExpected: 0,
         totalPresent: 0,
@@ -461,7 +490,7 @@ export class AttendanceService {
   }
 
   /**
-   * Get department statistics
+   * ✅ CORREGIDO: Get department statistics
    */
   static async getDepartmentStats(dateRange?: { start: Date; end: Date }): Promise<any[]> {
     try {
@@ -470,20 +499,30 @@ export class AttendanceService {
       const end = dateRange?.end || new Date();
       end.setHours(23, 59, 59, 999);
 
-      // Get all check-ins grouped by product type
+      console.log('🏢 Calculando estadísticas por departamento...');
+
       const productTypes: ProductType[] = ['BA', 'Aviva_Contigo', 'Casa_Marchand', 'Construrama', 'Disensa'];
       const stats = [];
 
       for (const productType of productTypes) {
-        const checkInsQuery = query(
+        console.log(`📊 Procesando ${productType}...`);
+
+        // 🔍 1. Check-ins de entrada para este producto
+        const entryCheckInsQuery = query(
           collection(db, 'checkins'),
           where('productType', '==', productType),
           where('timestamp', '>=', Timestamp.fromDate(start)),
           where('timestamp', '<=', Timestamp.fromDate(end)),
           where('type', '==', 'entrada')
         );
-        const checkInsSnapshot = await getDocs(checkInsQuery);
+        const checkInsSnapshot = await getDocs(entryCheckInsQuery);
+        const entryCheckIns = checkInsSnapshot.docs.map(doc => doc.data() as CheckIn);
         
+        // Contar usuarios únicos
+        const uniqueUsers = new Set(entryCheckIns.map(c => c.userId));
+        const totalPresent = uniqueUsers.size;
+
+        // 🔍 2. Issues de ausencia para este producto
         const issuesQuery = query(
           collection(db, 'attendance_issues'),
           where('productType', '==', productType),
@@ -493,41 +532,106 @@ export class AttendanceService {
           where('resolved', '==', false)
         );
         const issuesSnapshot = await getDocs(issuesQuery);
-        
-        // Get users for this product type
+        const totalAbsent = issuesSnapshot.size;
+
+        // 🔍 3. Usuarios activos de este producto
         const usersQuery = query(
           collection(db, 'users'),
           where('productType', '==', productType),
           where('status', '==', 'active')
         );
         const usersSnapshot = await getDocs(usersQuery);
-        
-        const totalPresent = checkInsSnapshot.size;
-        const totalAbsent = issuesSnapshot.size;
         const totalEmployees = usersSnapshot.size;
-        
+
+        // 🔍 4. Calcular puntualidad
         let onTimeCount = 0;
-        checkInsSnapshot.docs.forEach(doc => {
-          const checkIn = doc.data() as CheckIn;
+        entryCheckIns.forEach(checkIn => {
           if (checkIn.status === 'a_tiempo') {
             onTimeCount++;
           }
         });
-        
-        stats.push({
+
+        // 🔍 5. Calcular porcentajes
+        const totalReported = totalPresent + totalAbsent;
+        const attendance = totalReported > 0 ? ((totalPresent / totalReported) * 100) : 0;
+        const punctuality = totalPresent > 0 ? ((onTimeCount / totalPresent) * 100) : 0;
+
+        const departmentStat = {
           department: productType,
           employees: totalEmployees,
           present: totalPresent,
           absent: totalAbsent,
-          attendance: totalEmployees > 0 ? ((totalPresent / (totalPresent + totalAbsent)) * 100) : 0,
-          punctuality: totalPresent > 0 ? ((onTimeCount / totalPresent) * 100) : 0
-        });
+          attendance,
+          punctuality
+        };
+
+        console.log(`📈 ${productType}:`, departmentStat);
+        stats.push(departmentStat);
       }
 
       return stats;
     } catch (error) {
-      console.error('Error getting department stats:', error);
+      console.error('❌ Error getting department stats:', error);
       return [];
+    }
+  }
+
+  /**
+   * ✅ NUEVO: Get real-time dashboard stats
+   */
+  static async getDashboardStats(): Promise<{
+    todayPresent: number;
+    todayAbsent: number;
+    todayLate: number;
+    weeklyTrend: Array<{date: string; present: number; absent: number}>;
+  }> {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Estadísticas de hoy
+      const todayStats = await this.getAttendanceStats({ 
+        start: today, 
+        end: new Date() 
+      });
+
+      // Tendencia de la semana (últimos 7 días)
+      const weeklyTrend = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+        const endDate = new Date(date);
+        endDate.setHours(23, 59, 59, 999);
+
+        const dayStats = await this.getAttendanceStats({
+          start: date,
+          end: endDate
+        });
+
+        weeklyTrend.push({
+          date: date.toISOString().split('T')[0],
+          present: dayStats.totalPresent,
+          absent: dayStats.totalAbsent
+        });
+      }
+
+      return {
+        todayPresent: todayStats.totalPresent,
+        todayAbsent: todayStats.totalAbsent,
+        todayLate: todayStats.totalLate,
+        weeklyTrend
+      };
+    } catch (error) {
+      console.error('❌ Error getting dashboard stats:', error);
+      return {
+        todayPresent: 0,
+        todayAbsent: 0,
+        todayLate: 0,
+        weeklyTrend: []
+      };
     }
   }
 

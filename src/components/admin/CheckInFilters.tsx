@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button, Input, Select } from '../ui';
 import { CheckInFilters as Filters, Kiosk } from '../../types';
 import { PRODUCT_TYPES, CHECK_IN_TYPES, CHECK_IN_STATUS, MEXICAN_STATES } from '../../utils/constants';
-import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, XMarkIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
 interface CheckInFiltersProps {
   filters: Filters;
@@ -37,7 +37,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
 
   const kioskOptions = kiosks.map(kiosk => ({
     value: kiosk.id,
-    label: `${kiosk.name} - ${PRODUCT_TYPES[kiosk.productType]}`
+    label: `${kiosk.name} - ${PRODUCT_TYPES[kiosk.productType]} (${kiosk.id})`
   }));
 
   // Get unique cities from kiosks
@@ -66,6 +66,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
   };
 
   const applyFilters = () => {
+    console.log('Applying filters:', localFilters);
     onFiltersChange(localFilters);
   };
 
@@ -83,10 +84,20 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
     return date ? date.toISOString().split('T')[0] : '';
   };
 
+  // Determine which filter will be used as primary (for Firestore optimization)
+  const getPrimaryFilter = () => {
+    if (localFilters.dateRange?.start && localFilters.dateRange?.end) return 'Rango de fechas';
+    if (localFilters.kioskId) return 'Kiosco específico';
+    if (localFilters.productType) return 'Tipo de producto';
+    if (localFilters.status) return 'Estado';
+    if (localFilters.checkInType) return 'Tipo de check-in';
+    return 'Sin filtro principal';
+  };
+
   return (
     <div className="bg-white shadow rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-medium text-gray-900">Filtros</h3>
+        <h3 className="text-lg font-medium text-gray-900">Filtros de Búsqueda</h3>
         <div className="flex items-center space-x-2">
           <Button
             variant="secondary"
@@ -108,85 +119,113 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
         </div>
       </div>
 
+      {/* Filter Priority Info */}
+      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+        <div className="flex items-start space-x-2">
+          <InformationCircleIcon className="h-5 w-5 text-blue-500 mt-0.5" />
+          <div className="text-sm">
+            <p className="text-blue-800 font-medium">Filtro principal optimizado: {getPrimaryFilter()}</p>
+            <p className="text-blue-600 mt-1">
+              Para mejor rendimiento, usa primero rango de fechas, luego kiosco específico, 
+              después tipo de producto. Los demás filtros se aplicarán en memoria.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="space-y-4">
-        {/* Basic Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          <Input
-            label="Buscar por nombre"
-            placeholder="Nombre del usuario..."
-            value={localFilters.userName || ''}
-            onChange={(e) => handleFilterChange('userName', e.target.value)}
-          />
+        {/* Primary Filters (Optimized for Firestore) */}
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-green-800 mb-3">
+            🚀 Filtros Optimizados (Mayor Rendimiento)
+          </h4>
+          
+          {/* Date Range - Highest Priority */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <Input
+              label="📅 Fecha desde"
+              type="date"
+              value={formatDateForInput(localFilters.dateRange?.start)}
+              onChange={(e) => handleDateRangeChange('start', e.target.value)}
+            />
 
-          <Select
-            label="Tipo de check-in"
-            placeholder="Todos los tipos"
-            value={localFilters.checkInType || ''}
-            onChange={(e) => handleFilterChange('checkInType', e.target.value)}
-            options={checkInTypeOptions}
-          />
+            <Input
+              label="📅 Fecha hasta"
+              type="date"
+              value={formatDateForInput(localFilters.dateRange?.end)}
+              onChange={(e) => handleDateRangeChange('end', e.target.value)}
+              min={formatDateForInput(localFilters.dateRange?.start)}
+            />
+          </div>
 
-          <Select
-            label="Estado"
-            placeholder="Todos los estados"
-            value={localFilters.status || ''}
-            onChange={(e) => handleFilterChange('status', e.target.value)}
-            options={statusOptions}
-          />
-
-          <Select
-            label="Producto"
-            placeholder="Todos los productos"
-            value={localFilters.productType || ''}
-            onChange={(e) => handleFilterChange('productType', e.target.value)}
-            options={productTypeOptions}
-          />
-        </div>
-
-        {/* Date Range */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            label="Fecha desde"
-            type="date"
-            value={formatDateForInput(localFilters.dateRange?.start)}
-            onChange={(e) => handleDateRangeChange('start', e.target.value)}
-          />
-
-          <Input
-            label="Fecha hasta"
-            type="date"
-            value={formatDateForInput(localFilters.dateRange?.end)}
-            onChange={(e) => handleDateRangeChange('end', e.target.value)}
-            min={formatDateForInput(localFilters.dateRange?.start)}
-          />
-        </div>
-
-        {/* Expanded Filters */}
-        {isExpanded && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Select
-              label="Kiosco específico"
-              placeholder="Todos los kioscos"
+              label="🏪 Kiosco específico"
+              placeholder="Seleccionar kiosco..."
               value={localFilters.kioskId || ''}
               onChange={(e) => handleFilterChange('kioskId', e.target.value)}
               options={kioskOptions}
             />
 
             <Select
-              label="Estado geográfico"
-              placeholder="Todos los estados"
-              value={localFilters.state || ''}
-              onChange={(e) => handleFilterChange('state', e.target.value)}
-              options={stateOptions}
+              label="📦 Tipo de producto"
+              placeholder="Todos los productos"
+              value={localFilters.productType || ''}
+              onChange={(e) => handleFilterChange('productType', e.target.value)}
+              options={productTypeOptions}
             />
 
             <Select
-              label="Ciudad"
-              placeholder="Todas las ciudades"
-              value={localFilters.city || ''}
-              onChange={(e) => handleFilterChange('city', e.target.value)}
-              options={cityOptions}
+              label="📋 Estado"
+              placeholder="Todos los estados"
+              value={localFilters.status || ''}
+              onChange={(e) => handleFilterChange('status', e.target.value)}
+              options={statusOptions}
             />
+          </div>
+        </div>
+
+        {/* Secondary Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="👤 Buscar por nombre"
+            placeholder="Nombre del usuario..."
+            value={localFilters.userName || ''}
+            onChange={(e) => handleFilterChange('userName', e.target.value)}
+          />
+
+          <Select
+            label="⏰ Tipo de check-in"
+            placeholder="Todos los tipos"
+            value={localFilters.checkInType || ''}
+            onChange={(e) => handleFilterChange('checkInType', e.target.value)}
+            options={checkInTypeOptions}
+          />
+        </div>
+
+        {/* Expanded Filters */}
+        {isExpanded && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">
+              🔍 Filtros Adicionales
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select
+                label="🗺️ Estado geográfico"
+                placeholder="Todos los estados"
+                value={localFilters.state || ''}
+                onChange={(e) => handleFilterChange('state', e.target.value)}
+                options={stateOptions}
+              />
+
+              <Select
+                label="🏙️ Ciudad"
+                placeholder="Todas las ciudades"
+                value={localFilters.city || ''}
+                onChange={(e) => handleFilterChange('city', e.target.value)}
+                options={cityOptions}
+              />
+            </div>
           </div>
         )}
 
@@ -201,6 +240,40 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
           </Button>
         </div>
       </div>
+
+      {/* Active Filters Summary */}
+      {hasActiveFilters && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Filtros Activos:</h4>
+          <div className="flex flex-wrap gap-2">
+            {localFilters.dateRange?.start && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                📅 {formatDateForInput(localFilters.dateRange.start)} - {formatDateForInput(localFilters.dateRange.end)}
+              </span>
+            )}
+            {localFilters.kioskId && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                🏪 {kiosks.find(k => k.id === localFilters.kioskId)?.name}
+              </span>
+            )}
+            {localFilters.productType && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                📦 {PRODUCT_TYPES[localFilters.productType]}
+              </span>
+            )}
+            {localFilters.status && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                📋 {CHECK_IN_STATUS[localFilters.status]}
+              </span>
+            )}
+            {localFilters.userName && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                👤 {localFilters.userName}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -54,10 +54,10 @@ export class FirestoreService {
       console.log('Creating check-in for user:', userId);
       console.log('Kiosk ID from form:', formData.kioskId);
 
-      // Get user and kiosk data - CORREGIDO: usar getKioskById en lugar de getDocument
+      // Get user and kiosk data
       const [user, kiosk] = await Promise.all([
         this.getDocument<User>('users', userId),
-        this.getKioskById(formData.kioskId) // ✅ Usar método correcto para buscar por ID personalizado
+        this.getKioskById(formData.kioskId)
       ]);
 
       console.log('User found:', !!user, user?.name);
@@ -71,7 +71,7 @@ export class FirestoreService {
         throw new Error(`Kiosk no encontrado. El kiosk "${formData.kioskId}" no existe o está inactivo.`);
       }
 
-      // Calculate validation results - PASS userId
+      // Calculate validation results
       const validationResults = await this.validateCheckIn(kiosk, location, formData.type, userId);
 
       const checkInData: Omit<CheckIn, 'id'> = {
@@ -86,13 +86,13 @@ export class FirestoreService {
           latitude: location.latitude,
           longitude: location.longitude,
           ...(location.accuracy !== undefined && { accuracy: location.accuracy }),
-      },
+        },
         photoUrl,
-        notes: formData.notes ?? "", // 👈 FIX aplicado aquí
+        notes: formData.notes ?? "",
         status: validationResults.status || this.determineCheckInStatus(validationResults),
         validationResults,
         createdAt: serverTimestamp()
-    };
+      };
 
       const docRef = await addDoc(collection(db, 'checkins'), checkInData);
       console.log('Check-in created with ID:', docRef.id);
@@ -357,7 +357,7 @@ export class FirestoreService {
   }
 
   /**
-   * Get kiosk by custom ID (not document ID) - CORREGIDO
+   * Get kiosk by custom ID (not document ID)
    */
   static async getKioskById(kioskId: string): Promise<Kiosk | null> {
     try {
@@ -482,22 +482,33 @@ export class FirestoreService {
     }
   }
 
-  // ================== SYSTEM CONFIG - ACTUALIZADO ==================
+  // ================== SYSTEM CONFIG - CORREGIDO ==================
 
   /**
-   * Get system configuration with fallback to defaults
+   * Get system configuration with improved error handling
    */
   static async getSystemConfig(productType?: string): Promise<SystemConfig | null> {
     try {
       const configId = productType || 'global';
-      const config = await this.getDocument<SystemConfig>('system_config', configId);
+      console.log(`Obteniendo configuración para: ${configId}`);
       
-      if (config) {
-        return config;
+      const configRef = doc(db, 'system_config', configId);
+      const configDoc = await getDoc(configRef);
+      
+      if (configDoc.exists()) {
+        const data = configDoc.data();
+        console.log(`Configuración encontrada para ${configId}:`, data);
+        
+        return {
+          id: configDoc.id,
+          ...data
+        } as SystemConfig;
       }
 
-      // Si no existe configuración, retornar valores por defecto para inicializar
-      return {
+      console.log(`No existe configuración para ${configId}, creando valores por defecto`);
+      
+      // Si no existe configuración, crear una inicial con valores por defecto
+      const defaultConfig: SystemConfig = {
         toleranceMinutes: 5,
         severeDelayThreshold: 20,
         defaultRadius: 150,
@@ -528,15 +539,51 @@ export class FirestoreService {
 
         updatedAt: Timestamp.now(),
         updatedBy: 'system'
-      } as SystemConfig;
+      };
+
+      // Crear la configuración por defecto en la base de datos
+      await setDoc(configRef, defaultConfig);
+      console.log(`Configuración por defecto creada para ${configId}`);
+      
+      return defaultConfig;
     } catch (error) {
       console.error('Error getting system config:', error);
-      return null;
+      
+      // En caso de error, retornar configuración mínima para que la app funcione
+      return {
+        toleranceMinutes: 5,
+        severeDelayThreshold: 20,
+        defaultRadius: 150,
+        restDay: 'sunday',
+        absenceRules: {
+          noEntryAfterMinutes: 60,
+          noExitAfterMinutes: 120,
+        },
+        autoCloseRules: {
+          closeAfterMinutes: 60,
+          markAsAbsent: true,
+        },
+        lunchRules: {
+          maxDurationMinutes: 90,
+        },
+        notificationRules: {
+          notifyOnAbsence: true,
+          notifyOnLateExit: false,
+        },
+        alertRules: {
+          generateOnIrregularities: true,
+        },
+        approvalRules: {
+          requireForLateExit: false,
+        },
+        updatedAt: Timestamp.now(),
+        updatedBy: 'system'
+      } as SystemConfig;
     }
   }
 
   /**
-   * Update system configuration - ACTUALIZADO para manejar nested objects
+   * Update system configuration - CORREGIDO para manejar objetos anidados
    */
   static async updateSystemConfig(
     configData: Partial<SystemConfig>, 
@@ -545,27 +592,173 @@ export class FirestoreService {
   ): Promise<void> {
     try {
       const configId = productType || 'global';
+      console.log(`Actualizando configuración para ${configId}:`, configData);
       
-      // Preparar los datos para guardar, manejando objetos anidados
+      // Preparar los datos para guardar
       const dataToSave = {
         ...configData,
         updatedAt: serverTimestamp(),
         updatedBy: updatedBy || 'system'
       };
 
-      // Usar setDoc con merge para crear o actualizar
+      // Remover campos undefined para evitar problemas
+      Object.keys(dataToSave).forEach(key => {
+        if (dataToSave[key as keyof typeof dataToSave] === undefined) {
+          delete dataToSave[key as keyof typeof dataToSave];
+        }
+      });
+
       const configRef = doc(db, 'system_config', configId);
+      
+      // Usar setDoc con merge para crear o actualizar
       await setDoc(configRef, dataToSave, { merge: true });
 
-      console.log(`✅ Configuración guardada para: ${configId}`);
+      console.log(`✅ Configuración guardada exitosamente para: ${configId}`);
     } catch (error) {
       console.error('Error updating system config:', error);
-      throw error;
+      throw new Error(`Error guardando configuración: ${(error as Error).message}`);
     }
   }
 
   /**
-   * NUEVO: Get attendance rules specifically
+   * Validate system configuration
+   */
+  static async validateSystemConfig(config: Partial<SystemConfig>): Promise<{
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+  }> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    try {
+      // Validaciones básicas
+      if (config.toleranceMinutes !== undefined) {
+        if (config.toleranceMinutes < 0 || config.toleranceMinutes > 60) {
+          errors.push('Tolerancia debe estar entre 0 y 60 minutos');
+        }
+      }
+
+      if (config.severeDelayThreshold !== undefined) {
+        if (config.severeDelayThreshold < 5 || config.severeDelayThreshold > 120) {
+          errors.push('Umbral de retraso grave debe estar entre 5 y 120 minutos');
+        }
+      }
+
+      if (config.defaultRadius !== undefined) {
+        if (config.defaultRadius < 50 || config.defaultRadius > 1000) {
+          errors.push('Radio por defecto debe estar entre 50 y 1000 metros');
+        }
+      }
+
+      // Validar reglas de ausencias
+      if (config.absenceRules) {
+        if (config.absenceRules.noEntryAfterMinutes && 
+            (config.absenceRules.noEntryAfterMinutes < 0 || config.absenceRules.noEntryAfterMinutes > 480)) {
+          errors.push('Tiempo para ausencia por entrada debe estar entre 0 y 480 minutos');
+        }
+
+        if (config.absenceRules.noExitAfterMinutes && 
+            (config.absenceRules.noExitAfterMinutes < 0 || config.absenceRules.noExitAfterMinutes > 480)) {
+          errors.push('Tiempo para ausencia por salida debe estar entre 0 y 480 minutos');
+        }
+      }
+
+      // Validar auto close
+      if (config.autoCloseRules?.closeAfterMinutes && 
+          (config.autoCloseRules.closeAfterMinutes < 0 || config.autoCloseRules.closeAfterMinutes > 240)) {
+        errors.push('Tiempo de cierre automático debe estar entre 0 y 240 minutos');
+      }
+
+      // Validar reglas de comida
+      if (config.lunchRules?.maxDurationMinutes && 
+          (config.lunchRules.maxDurationMinutes < 30 || config.lunchRules.maxDurationMinutes > 180)) {
+        errors.push('Duración máxima de comida debe estar entre 30 y 180 minutos');
+      }
+
+      // Advertencias
+      if (config.absenceRules?.noEntryAfterMinutes && config.absenceRules.noEntryAfterMinutes > 120) {
+        warnings.push('Tiempo de gracia para entrada muy alto (>2 horas)');
+      }
+
+      if (config.lunchRules?.maxDurationMinutes && config.lunchRules.maxDurationMinutes > 120) {
+        warnings.push('Tiempo máximo de comida muy alto (>2 horas)');
+      }
+
+      // Validar consistencia entre reglas
+      if (config.autoCloseRules?.closeAfterMinutes && 
+          config.absenceRules?.noExitAfterMinutes &&
+          config.autoCloseRules.closeAfterMinutes < config.absenceRules.noExitAfterMinutes) {
+        warnings.push('El cierre automático ocurre antes que la detección de ausencia por salida');
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors,
+        warnings
+      };
+    } catch (error) {
+      console.error('Error validating config:', error);
+      return {
+        isValid: false,
+        errors: ['Error validando configuración'],
+        warnings: []
+      };
+    }
+  }
+
+  /**
+   * Test configuration by creating a dummy entry
+   */
+  static async testSystemConfig(productType?: string): Promise<boolean> {
+    try {
+      const config = await this.getSystemConfig(productType);
+      return !!config && config.toleranceMinutes !== undefined;
+    } catch (error) {
+      console.error('Error testing system config:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Reset configuration to defaults
+   */
+  static async resetSystemConfigToDefaults(productType?: string): Promise<void> {
+    const defaultConfig: SystemConfig = {
+      toleranceMinutes: 5,
+      severeDelayThreshold: 20,
+      defaultRadius: 150,
+      restDay: 'sunday',
+      absenceRules: {
+        noEntryAfterMinutes: 60,
+        noExitAfterMinutes: 120,
+      },
+      autoCloseRules: {
+        closeAfterMinutes: 60,
+        markAsAbsent: true,
+      },
+      lunchRules: {
+        maxDurationMinutes: 90,
+      },
+      notificationRules: {
+        notifyOnAbsence: true,
+        notifyOnLateExit: false,
+      },
+      alertRules: {
+        generateOnIrregularities: true,
+      },
+      approvalRules: {
+        requireForLateExit: false,
+      },
+      updatedAt: serverTimestamp(),
+      updatedBy: 'system_reset'
+    };
+
+    await this.updateSystemConfig(defaultConfig, productType, 'system_reset');
+  }
+
+  /**
+   * Get attendance rules specifically
    */
   static async getAttendanceRules(productType?: string): Promise<SystemConfig['absenceRules'] | null> {
     try {
@@ -578,7 +771,7 @@ export class FirestoreService {
   }
 
   /**
-   * NUEVO: Update only attendance rules
+   * Update only attendance rules
    */
   static async updateAttendanceRules(
     rules: SystemConfig['absenceRules'], 

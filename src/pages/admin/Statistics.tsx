@@ -1,4 +1,5 @@
-// src/pages/admin/Statistics.tsx - COMPLETO CON DATOS REALES
+// src/pages/admin/Statistics.tsx - VERSIÓN CORREGIDA
+
 import React, { useState, useEffect } from 'react';
 import { AttendanceService } from '../../services/attendance';
 import { FirestoreService } from '../../services/firestore';
@@ -11,7 +12,8 @@ import {
   ClockIcon, 
   CheckCircleIcon,
   XCircleIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
 
 interface DepartmentStat {
@@ -36,10 +38,14 @@ const AdminStatistics: React.FC = () => {
   const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrend[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year'>('month');
+  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'year'>('today');
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   useEffect(() => {
     fetchStatistics();
+    // Auto-refresh cada 5 minutos
+    const interval = setInterval(fetchStatistics, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [selectedPeriod]);
 
   const fetchStatistics = async () => {
@@ -47,56 +53,89 @@ const AdminStatistics: React.FC = () => {
     setError(null);
     
     try {
-      // Calculate date range based on selected period
-      const end = new Date();
-      const start = new Date();
+      console.log('🔄 Cargando estadísticas para período:', selectedPeriod);
       
-      switch (selectedPeriod) {
-        case 'week':
-          start.setDate(start.getDate() - 7);
-          break;
-        case 'month':
-          start.setMonth(start.getMonth() - 1);
-          break;
-        case 'year':
-          start.setFullYear(start.getFullYear() - 1);
-          break;
-      }
+      // Calcular rango de fechas basado en el período seleccionado
+      const { start, end } = getDateRange(selectedPeriod);
+      
+      console.log('📅 Rango de fechas:', start.toISOString(), 'a', end.toISOString());
 
-      // Get real statistics
+      // Cargar estadísticas en paralelo
       const [attendanceStats, deptStats, trends] = await Promise.all([
         AttendanceService.getAttendanceStats({ start, end }),
         AttendanceService.getDepartmentStats({ start, end }),
         getMonthlyTrend()
       ]);
       
+      console.log('📊 Estadísticas obtenidas:', {
+        attendance: attendanceStats,
+        departments: deptStats.length,
+        trends: trends.length
+      });
+      
       setStats(attendanceStats);
       setDepartmentStats(deptStats);
       setMonthlyTrend(trends);
+      setLastUpdate(new Date());
+      
     } catch (error) {
-      console.error('Error fetching statistics:', error);
-      setError('Error cargando estadísticas');
+      console.error('❌ Error fetching statistics:', error);
+      setError(`Error cargando estadísticas: ${error.message}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const getDateRange = (period: string): { start: Date; end: Date } => {
+    const end = new Date();
+    const start = new Date();
+    
+    switch (period) {
+      case 'today':
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'week':
+        start.setDate(start.getDate() - 7);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'month':
+        start.setMonth(start.getMonth() - 1);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'year':
+        start.setFullYear(start.getFullYear() - 1);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+    }
+    
+    return { start, end };
   };
 
   const getMonthlyTrend = async (): Promise<MonthlyTrend[]> => {
     const trends: MonthlyTrend[] = [];
     const now = new Date();
     
-    for (let i = 5; i >= 0; i--) {
-      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-      
-      const stats = await AttendanceService.getAttendanceStats({ start, end });
-      
-      trends.push({
-        month: start.toLocaleDateString('es-MX', { month: 'short' }),
-        present: stats.totalPresent,
-        absent: stats.totalAbsent,
-        late: stats.totalLate
-      });
+    try {
+      // Últimos 6 meses
+      for (let i = 5; i >= 0; i--) {
+        const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+        
+        const stats = await AttendanceService.getAttendanceStats({ start, end });
+        
+        trends.push({
+          month: start.toLocaleDateString('es-MX', { month: 'short' }),
+          present: stats.totalPresent,
+          absent: stats.totalAbsent,
+          late: stats.totalLate
+        });
+      }
+    } catch (error) {
+      console.error('Error getting monthly trend:', error);
     }
     
     return trends;
@@ -110,52 +149,75 @@ const AdminStatistics: React.FC = () => {
       <div className="space-y-3">
         {data.map((item, index) => (
           <div key={index} className="flex items-center space-x-3">
-            <div className="w-16 text-sm font-medium text-gray-700 capitalize">{item.month}</div>
-            <div className="flex-1 flex">
-              <div 
-                className="bg-green-500 h-6 flex items-center justify-center text-white text-xs"
-                style={{ width: `${(item.present / maxValue) * 100}%`, minWidth: item.present > 0 ? '30px' : '0px' }}
-              >
-                {item.present > 0 && item.present}
-              </div>
-              <div 
-                className="bg-red-500 h-6 flex items-center justify-center text-white text-xs"
-                style={{ width: `${(item.absent / maxValue) * 100}%`, minWidth: item.absent > 0 ? '30px' : '0px' }}
-              >
-                {item.absent > 0 && item.absent}
-              </div>
-              <div 
-                className="bg-yellow-500 h-6 flex items-center justify-center text-white text-xs"
-                style={{ width: `${(item.late / maxValue) * 100}%`, minWidth: item.late > 0 ? '30px' : '0px' }}
-              >
-                {item.late > 0 && item.late}
-              </div>
+            <div className="w-16 text-sm font-medium text-gray-700 capitalize">
+              {item.month}
+            </div>
+            <div className="flex-1 flex bg-gray-200 rounded h-6">
+              {item.present > 0 && (
+                <div 
+                  className="bg-green-500 h-6 flex items-center justify-center text-white text-xs rounded-l"
+                  style={{ width: `${(item.present / maxValue) * 100}%`, minWidth: '20px' }}
+                  title={`Presentes: ${item.present}`}
+                >
+                  {item.present}
+                </div>
+              )}
+              {item.late > 0 && (
+                <div 
+                  className="bg-yellow-500 h-6 flex items-center justify-center text-white text-xs"
+                  style={{ width: `${(item.late / maxValue) * 100}%`, minWidth: '20px' }}
+                  title={`Tardíos: ${item.late}`}
+                >
+                  {item.late}
+                </div>
+              )}
+              {item.absent > 0 && (
+                <div 
+                  className="bg-red-500 h-6 flex items-center justify-center text-white text-xs rounded-r"
+                  style={{ width: `${(item.absent / maxValue) * 100}%`, minWidth: '20px' }}
+                  title={`Ausentes: ${item.absent}`}
+                >
+                  {item.absent}
+                </div>
+              )}
+            </div>
+            <div className="text-sm text-gray-600 w-16">
+              Total: {item.present + item.absent + item.late}
             </div>
           </div>
         ))}
+        
+        {/* Leyenda */}
         <div className="flex items-center space-x-4 text-xs mt-4">
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-green-500"></div>
+            <div className="w-3 h-3 bg-green-500 rounded"></div>
             <span>Presente</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-red-500"></div>
-            <span>Ausente</span>
+            <div className="w-3 h-3 bg-yellow-500 rounded"></div>
+            <span>Tarde</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-yellow-500"></div>
-            <span>Tarde</span>
+            <div className="w-3 h-3 bg-red-500 rounded"></div>
+            <span>Ausente</span>
           </div>
         </div>
       </div>
     );
   };
 
+  const handleRefresh = () => {
+    fetchStatistics();
+  };
+
   if (loading) {
     return (
       <div className="p-6">
         <div className="flex items-center justify-center h-64">
-          <LoadingSpinner size="lg" />
+          <div className="text-center">
+            <LoadingSpinner size="lg" />
+            <p className="mt-2 text-gray-600">Cargando estadísticas...</p>
+          </div>
         </div>
       </div>
     );
@@ -164,7 +226,20 @@ const AdminStatistics: React.FC = () => {
   if (error) {
     return (
       <div className="p-6">
-        <Alert type="error" message={error} />
+        <Alert 
+          type="error" 
+          message={error}
+          dismissible
+          onDismiss={() => setError(null)}
+        />
+        <div className="mt-4 text-center">
+          <button
+            onClick={handleRefresh}
+            className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700"
+          >
+            Reintentar
+          </button>
+        </div>
       </div>
     );
   }
@@ -172,7 +247,18 @@ const AdminStatistics: React.FC = () => {
   if (!stats) {
     return (
       <div className="p-6">
-        <Alert type="warning" message="No hay datos disponibles" />
+        <Alert 
+          type="warning" 
+          message="No hay datos disponibles para el período seleccionado"
+        />
+        <div className="mt-4 text-center">
+          <button
+            onClick={handleRefresh}
+            className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700"
+          >
+            Cargar Datos
+          </button>
+        </div>
       </div>
     );
   }
@@ -183,17 +269,33 @@ const AdminStatistics: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Estadísticas de Asistencia</h1>
-        <div className="flex space-x-2">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Estadísticas de Asistencia</h1>
+          {lastUpdate && (
+            <p className="text-sm text-gray-500 mt-1">
+              Última actualización: {lastUpdate.toLocaleTimeString()}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center space-x-3">
           <select 
             value={selectedPeriod} 
-            onChange={(e) => setSelectedPeriod(e.target.value as 'week' | 'month' | 'year')}
+            onChange={(e) => setSelectedPeriod(e.target.value as any)}
             className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
-            <option value="week">Esta Semana</option>
-            <option value="month">Este Mes</option>
-            <option value="year">Este Año</option>
+            <option value="today">Hoy</option>
+            <option value="week">Última Semana</option>
+            <option value="month">Último Mes</option>
+            <option value="year">Último Año</option>
           </select>
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="flex items-center space-x-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50"
+          >
+            <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <span>Actualizar</span>
+          </button>
         </div>
       </div>
 
@@ -244,13 +346,27 @@ const AdminStatistics: React.FC = () => {
         </div>
       </div>
 
+      {/* Debug Info */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="bg-gray-100 rounded-lg p-4 text-xs">
+          <strong>Debug Info:</strong>
+          <pre>{JSON.stringify(stats, null, 2)}</pre>
+        </div>
+      )}
+
       {/* Monthly Trends */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-gray-900">Tendencia Mensual</h2>
           <ChartBarIcon className="h-6 w-6 text-gray-400" />
         </div>
-        <BarChart data={monthlyTrend} />
+        {monthlyTrend.length > 0 ? (
+          <BarChart data={monthlyTrend} />
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            No hay datos de tendencia disponibles
+          </div>
+        )}
       </div>
 
       {/* Department Statistics Table */}
@@ -287,7 +403,7 @@ const AdminStatistics: React.FC = () => {
                 departmentStats.map((dept, index) => (
                   <tr key={index} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {dept.department}
+                      {PRODUCT_TYPES[dept.department as keyof typeof PRODUCT_TYPES] || dept.department}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {dept.employees}
@@ -304,10 +420,10 @@ const AdminStatistics: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div className="flex items-center">
-                        <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2">
+                        <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2 max-w-16">
                           <div 
                             className="bg-green-500 h-2 rounded-full"
-                            style={{ width: `${dept.attendance}%` }}
+                            style={{ width: `${Math.min(dept.attendance, 100)}%` }}
                           ></div>
                         </div>
                         <span className="text-xs font-medium">{formatPercentage(dept.attendance)}</span>
@@ -315,10 +431,10 @@ const AdminStatistics: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <div className="flex items-center">
-                        <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2">
+                        <div className="flex-1 bg-gray-200 rounded-full h-2 mr-2 max-w-16">
                           <div 
                             className="bg-yellow-500 h-2 rounded-full"
-                            style={{ width: `${dept.punctuality}%` }}
+                            style={{ width: `${Math.min(dept.punctuality, 100)}%` }}
                           ></div>
                         </div>
                         <span className="text-xs font-medium">{formatPercentage(dept.punctuality)}</span>
@@ -344,6 +460,14 @@ const AdminStatistics: React.FC = () => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Resumen del Período</h3>
           <div className="space-y-3">
             <div className="flex justify-between">
+              <span className="text-sm text-gray-600">Período seleccionado:</span>
+              <span className="text-sm font-semibold text-gray-900 capitalize">
+                {selectedPeriod === 'today' ? 'Hoy' : 
+                 selectedPeriod === 'week' ? 'Última semana' :
+                 selectedPeriod === 'month' ? 'Último mes' : 'Último año'}
+              </span>
+            </div>
+            <div className="flex justify-between">
               <span className="text-sm text-gray-600">Promedio de asistencia:</span>
               <span className="text-sm font-semibold text-gray-900">{attendanceRate}</span>
             </div>
@@ -356,8 +480,10 @@ const AdminStatistics: React.FC = () => {
               <span className="text-sm font-semibold text-gray-900">{stats.totalPresent + stats.totalLate}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-gray-600">Período seleccionado:</span>
-              <span className="text-sm font-semibold text-gray-900 capitalize">{selectedPeriod}</span>
+              <span className="text-sm text-gray-600">Efectividad general:</span>
+              <span className={`text-sm font-semibold ${stats.attendanceRate >= 90 ? 'text-green-600' : stats.attendanceRate >= 80 ? 'text-yellow-600' : 'text-red-600'}`}>
+                {stats.attendanceRate >= 90 ? 'Excelente' : stats.attendanceRate >= 80 ? 'Buena' : 'Por mejorar'}
+              </span>
             </div>
           </div>
         </div>
@@ -401,6 +527,45 @@ const AdminStatistics: React.FC = () => {
                 </div>
               </div>
             )}
+            {/* Mostrar mensaje si no hay alertas */}
+            {stats.totalAbsent <= stats.totalExpected * 0.1 && 
+             stats.totalLate <= stats.totalPresent * 0.15 && 
+             stats.attendanceRate < 95 && (
+              <div className="flex items-start space-x-2">
+                <CheckCircleIcon className="h-5 w-5 text-blue-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Sistema funcionando normalmente</p>
+                  <p className="text-xs text-gray-500">No hay alertas críticas por el momento</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Data Quality Info */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-blue-800">
+              Sobre los Datos
+            </h3>
+            <div className="mt-2 text-sm text-blue-700">
+              <p>
+                Las estadísticas se calculan en tiempo real basándose en los check-ins registrados y las ausencias detectadas automáticamente por el sistema.
+              </p>
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>Los datos se actualizan automáticamente cada 5 minutos</li>
+                <li>Las ausencias se detectan según las reglas configuradas</li>
+                <li>Los departamentos se agrupan por tipo de producto</li>
+                <li>Los cálculos excluyen días no laborables</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
