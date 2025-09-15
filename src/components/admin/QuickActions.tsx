@@ -1,4 +1,4 @@
-// src/components/admin/QuickActions.tsx - Complete version with all actions
+// src/components/admin/QuickActions.tsx - ACTUALIZADO CON HORARIOS
 import React from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -8,7 +8,8 @@ import {
   Cog6ToothIcon,
   ChartBarIcon,
   CalendarDaysIcon,
-  ClockIcon
+  ClockIcon,
+  AdjustmentsHorizontalIcon
 } from '@heroicons/react/24/outline';
 
 export function QuickActions() {
@@ -33,6 +34,13 @@ export function QuickActions() {
       href: '/admin/locations',
       icon: MapPinIcon,
       color: 'bg-purple-600 hover:bg-purple-700'
+    },
+    {
+      title: 'Horarios', // NUEVA ACCIÓN
+      description: 'Configurar horarios de trabajo',
+      href: '/admin/schedules',
+      icon: AdjustmentsHorizontalIcon,
+      color: 'bg-teal-600 hover:bg-teal-700'
     },
     {
       title: 'Reportes',
@@ -70,7 +78,7 @@ export function QuickActions() {
         Acciones Rápidas
       </h3>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4">
         {actions.map((action, index) => (
           <Link
             key={index}

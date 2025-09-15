@@ -137,7 +137,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
         {/* Primary Filters (Optimized for Firestore) */}
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <h4 className="text-sm font-medium text-green-800 mb-3">
-            🚀 Filtros Optimizados (Mayor Rendimiento)
+            🚀 Filtros
           </h4>
           
           {/* Date Range - Highest Priority */}

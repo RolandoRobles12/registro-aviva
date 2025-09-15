@@ -1,4 +1,4 @@
-// src/components/layout/AdminSidebar.tsx - Versión con iconos tamaño correcto
+// src/components/layout/AdminSidebar.tsx - ACTUALIZADO CON HORARIOS
 import React, { Fragment } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Dialog, Transition } from '@headlessui/react';
@@ -11,7 +11,8 @@ import {
   MapPinIcon,
   ChartBarIcon,
   UsersIcon,
-  Cog6ToothIcon
+  Cog6ToothIcon,
+  AdjustmentsHorizontalIcon
 } from '@heroicons/react/24/outline';
 
 interface AdminSidebarProps {
@@ -45,6 +46,11 @@ const navigation = [
     name: 'Ubicaciones',
     href: '/admin/locations',
     icon: MapPinIcon
+  },
+  {
+    name: 'Horarios', // NUEVA OPCIÓN
+    href: '/admin/schedules',
+    icon: AdjustmentsHorizontalIcon
   },
   {
     name: 'Estadísticas',

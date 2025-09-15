@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, usePermissions } from '../../contexts/AuthContext';
 import { SystemConfigForm } from '../../components/admin/SystemConfigForm';
+import { ScheduleConfig } from '../../components/admin/ScheduleConfig';
 import { BusinessRulesManager } from '../../components/admin/BusinessRulesManager';
 import { HolidaysManager } from '../../components/admin/HolidaysManager';
 import { RolesManager } from '../../components/admin/RolesManager';
 import { LoadingSpinner, Alert } from '../../components/ui';
 import {
   Cog6ToothIcon,
+  ClockIcon,
   ShieldCheckIcon,
   CalendarDaysIcon,
   UsersIcon,
@@ -20,6 +22,13 @@ const configTabs = [
     icon: Cog6ToothIcon,
     description: 'Parámetros globales para puntualidad y geocercas',
     component: SystemConfigForm
+  },
+  {
+    id: 'schedules',
+    name: 'Horarios de Trabajo',
+    icon: ClockIcon,
+    description: 'Configura horarios de entrada, salida y comida por producto',
+    component: ScheduleConfig
   },
   {
     id: 'rules',
@@ -47,7 +56,7 @@ const configTabs = [
 export default function AdminConfiguration() {
   const { user } = useAuth();
   const { isSuperAdmin } = usePermissions();
-  const [activeTab, setActiveTab] = useState('system');
+  const [activeTab, setActiveTab] = useState('schedules'); // Cambiar default a schedules
   const [loading, setLoading] = useState(false);
 
   // Only super admins can access configuration

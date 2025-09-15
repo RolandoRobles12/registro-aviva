@@ -1,4 +1,4 @@
-// src/App.tsx
+// src/App.tsx - ACTUALIZADO CON RUTA DE HORARIOS
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
@@ -11,12 +11,13 @@ import SimpleCheckIn from './pages/employee/SimpleCheckIn';
 import TimeOffRequest from './pages/employee/TimeOffRequest';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminCheckIns from './pages/admin/CheckIns';
-// import AdminReports from './pages/admin/Reports';
 import AdminTimeOffRequests from './pages/admin/TimeOffRequests';
 import AdminLocations from './pages/admin/Locations';
 import AdminStatistics from './pages/admin/Statistics';
 import AdminUsers from './pages/admin/Users';
 import AdminConfiguration from './pages/admin/Configuration';
+import AdminSchedules from './pages/admin/Schedules'; // NUEVA PÁGINA
+import AdminReports from './pages/admin/Reports';
 
 // Layouts
 import EmployeeLayout from './components/layout/EmployeeLayout';
@@ -66,9 +67,10 @@ function App() {
               <Route index element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="dashboard" element={<AdminDashboard />} />
               <Route path="checkins" element={<AdminCheckIns />} />
-              {/* <Route path="reports" element={<AdminReports />} /> */}
+              <Route path="reports" element={<AdminReports />} />
               <Route path="time-off" element={<AdminTimeOffRequests />} />
               <Route path="locations" element={<AdminLocations />} />
+              <Route path="schedules" element={<AdminSchedules />} /> {/* NUEVA RUTA */}
               <Route path="statistics" element={<AdminStatistics />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="configuration" element={<AdminConfiguration />} />
