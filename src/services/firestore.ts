@@ -104,7 +104,7 @@ export class FirestoreService {
   }
 
   /**
-   * Get check-ins with filters and pagination
+   * Get check-ins with optimized filters and pagination
    */
   static async getCheckIns(
     filters?: CheckInFilters,
@@ -113,61 +113,240 @@ export class FirestoreService {
     lastDoc?: QueryDocumentSnapshot<DocumentData>
   ): Promise<PaginatedResponse<CheckIn>> {
     try {
+      console.log('🔍 Loading check-ins with filters:', filters);
+      
       const constraints: QueryConstraint[] = [];
+      let primaryIndex = 'timestamp'; // Default index to use
 
-      // Apply filters - Simplified to avoid complex composite indexes
-      if (filters?.dateRange) {
+      // ✅ ESTRATEGIA: Usar solo UN filtro principal para evitar índices compuestos complejos
+      // Prioridad: dateRange > kioskId > productType > status > type
+      
+      if (filters?.dateRange?.start && filters?.dateRange?.end) {
+        // ✅ Filtro por fecha - Más eficiente y común
         constraints.push(where('timestamp', '>=', Timestamp.fromDate(filters.dateRange.start)));
         constraints.push(where('timestamp', '<=', Timestamp.fromDate(filters.dateRange.end)));
+        constraints.push(orderBy('timestamp', 'desc'));
+        primaryIndex = 'dateRange';
+        
       } else if (filters?.kioskId) {
+        // ✅ Filtro por kiosko específico
         constraints.push(where('kioskId', '==', filters.kioskId));
+        constraints.push(orderBy('timestamp', 'desc'));
+        primaryIndex = 'kioskId';
+        
       } else if (filters?.productType) {
+        // ✅ Filtro por tipo de producto
         constraints.push(where('productType', '==', filters.productType));
-      } else if (filters?.checkInType) {
-        constraints.push(where('type', '==', filters.checkInType));
+        constraints.push(orderBy('timestamp', 'desc'));
+        primaryIndex = 'productType';
+        
       } else if (filters?.status) {
+        // ✅ Filtro por estado
         constraints.push(where('status', '==', filters.status));
+        constraints.push(orderBy('timestamp', 'desc'));
+        primaryIndex = 'status';
+        
+      } else if (filters?.checkInType) {
+        // ✅ Filtro por tipo de check-in
+        constraints.push(where('type', '==', filters.checkInType));
+        constraints.push(orderBy('timestamp', 'desc'));
+        primaryIndex = 'checkInType';
+        
+      } else {
+        // ✅ Sin filtros - Solo ordenar por timestamp
+        constraints.push(orderBy('timestamp', 'desc'));
+        primaryIndex = 'default';
       }
 
-      // Add ordering and pagination
-      constraints.push(orderBy('timestamp', 'desc'));
+      // ✅ Paginación mejorada
       if (lastDoc) {
         constraints.push(startAfter(lastDoc));
       }
-      constraints.push(limit(pageSize + 1)); // +1 to check if there's a next page
+      
+      // +1 para detectar si hay siguiente página
+      constraints.push(limit(pageSize + 1));
+
+      console.log(`📊 Using primary index: ${primaryIndex}, constraints: ${constraints.length}`);
 
       const q = query(collection(db, 'checkins'), ...constraints);
       const querySnapshot = await getDocs(q);
 
       const docs = querySnapshot.docs;
       const hasNext = docs.length > pageSize;
-      const dataList = docs.slice(0, pageSize);
+      const dataList = docs.slice(0, pageSize); // Quitar el documento extra
 
-      const checkins = dataList.map(doc => ({
+      let checkins = dataList.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as CheckIn[];
 
-      // Apply additional filters in memory if needed
-      let filteredCheckins = checkins;
+      console.log(`📈 Query returned ${checkins.length} check-ins, hasNext: ${hasNext}`);
+
+      // ✅ Aplicar filtros adicionales EN MEMORIA (solo si es necesario)
+      let memoryFiltersApplied = 0;
       
-      if (filters?.userName) {
-        filteredCheckins = filteredCheckins.filter(c => 
-          c.userName.toLowerCase().includes(filters.userName!.toLowerCase())
+      if (filters?.userName && filters.userName.trim()) {
+        const searchTerm = filters.userName.toLowerCase().trim();
+        checkins = checkins.filter(c => 
+          c.userName.toLowerCase().includes(searchTerm)
         );
+        memoryFiltersApplied++;
       }
 
+      // ✅ Si no usamos dateRange como filtro principal, aplicarlo en memoria
+      if (primaryIndex !== 'dateRange' && filters?.dateRange?.start && filters?.dateRange?.end) {
+        checkins = checkins.filter(c => {
+          const checkInDate = c.timestamp.toDate();
+          return checkInDate >= filters.dateRange!.start && checkInDate <= filters.dateRange!.end;
+        });
+        memoryFiltersApplied++;
+      }
+
+      // ✅ Si no usamos kioskId como filtro principal, aplicarlo en memoria
+      if (primaryIndex !== 'kioskId' && filters?.kioskId) {
+        checkins = checkins.filter(c => c.kioskId === filters.kioskId);
+        memoryFiltersApplied++;
+      }
+
+      // ✅ Si no usamos productType como filtro principal, aplicarlo en memoria
+      if (primaryIndex !== 'productType' && filters?.productType) {
+        checkins = checkins.filter(c => c.productType === filters.productType);
+        memoryFiltersApplied++;
+      }
+
+      // ✅ Si no usamos status como filtro principal, aplicarlo en memoria
+      if (primaryIndex !== 'status' && filters?.status) {
+        checkins = checkins.filter(c => c.status === filters.status);
+        memoryFiltersApplied++;
+      }
+
+      // ✅ Si no usamos type como filtro principal, aplicarlo en memoria
+      if (primaryIndex !== 'checkInType' && filters?.checkInType) {
+        checkins = checkins.filter(c => c.type === filters.checkInType);
+        memoryFiltersApplied++;
+      }
+
+      // ✅ Filtros geográficos (siempre en memoria)
+      if (filters?.state) {
+        // Necesitaríamos agregar campo 'state' a check-ins o hacer join con kiosks
+        console.warn('State filter requires kiosk data join - not implemented');
+      }
+
+      if (filters?.city) {
+        // Necesitaríamos agregar campo 'city' a check-ins o hacer join con kiosks
+        console.warn('City filter requires kiosk data join - not implemented');
+      }
+
+      if (memoryFiltersApplied > 0) {
+        console.log(`🧠 Applied ${memoryFiltersApplied} additional filters in memory`);
+      }
+
+      // ✅ IMPORTANTE: Para paginación correcta, necesitamos el último documento ANTES del filtrado en memoria
+      const lastDocument = dataList.length > 0 ? dataList[dataList.length - 1] : undefined;
+
+      console.log(`✅ Returning ${checkins.length} filtered check-ins`);
+
       return {
-        data: filteredCheckins,
-        total: 0, // Firestore doesn't provide total count efficiently
+        data: checkins,
+        total: 0, // Firestore no permite count() eficientemente
         page,
         limit: pageSize,
-        hasNext
+        hasNext: hasNext, // Basado en la query original
+        lastDoc: lastDocument // Para siguiente página
       };
-    } catch (error) {
-      console.error('Error getting check-ins:', error);
-      throw error;
+
+    } catch (error: any) {
+      console.error('❌ Error getting check-ins:', error);
+      
+      // ✅ Manejo de errores específicos de Firestore
+      if (error.code === 'failed-precondition' || error.message.includes('index')) {
+        console.error('🔥 Firestore Index Error - Falling back to simple query');
+        
+        // ✅ Fallback: Query simple solo con timestamp
+        try {
+          const fallbackConstraints = [
+            orderBy('timestamp', 'desc'),
+            limit(pageSize + 1)
+          ];
+          
+          if (lastDoc) {
+            fallbackConstraints.splice(1, 0, startAfter(lastDoc));
+          }
+
+          const fallbackQuery = query(collection(db, 'checkins'), ...fallbackConstraints);
+          const fallbackSnapshot = await getDocs(fallbackQuery);
+          
+          const fallbackDocs = fallbackSnapshot.docs;
+          const fallbackHasNext = fallbackDocs.length > pageSize;
+          const fallbackData = fallbackDocs.slice(0, pageSize);
+
+          let fallbackCheckins = fallbackData.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as CheckIn[];
+
+          // Aplicar TODOS los filtros en memoria
+          if (filters) {
+            fallbackCheckins = this.applyAllFiltersInMemory(fallbackCheckins, filters);
+          }
+
+          console.log(`🔄 Fallback query returned ${fallbackCheckins.length} check-ins`);
+
+          return {
+            data: fallbackCheckins,
+            total: 0,
+            page,
+            limit: pageSize,
+            hasNext: fallbackHasNext,
+            lastDoc: fallbackData.length > 0 ? fallbackData[fallbackData.length - 1] : undefined
+          };
+        } catch (fallbackError) {
+          console.error('❌ Fallback query also failed:', fallbackError);
+          throw new Error('Error cargando check-ins. Verifica la configuración de la base de datos.');
+        }
+      }
+      
+      throw new Error(`Error cargando check-ins: ${error.message}`);
     }
+  }
+
+  /**
+   * ✅ NUEVO: Aplicar todos los filtros en memoria (para fallback)
+   */
+  private static applyAllFiltersInMemory(checkins: CheckIn[], filters: CheckInFilters): CheckIn[] {
+    let filtered = [...checkins];
+
+    if (filters.userName?.trim()) {
+      const searchTerm = filters.userName.toLowerCase().trim();
+      filtered = filtered.filter(c => 
+        c.userName.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    if (filters.kioskId) {
+      filtered = filtered.filter(c => c.kioskId === filters.kioskId);
+    }
+
+    if (filters.productType) {
+      filtered = filtered.filter(c => c.productType === filters.productType);
+    }
+
+    if (filters.status) {
+      filtered = filtered.filter(c => c.status === filters.status);
+    }
+
+    if (filters.checkInType) {
+      filtered = filtered.filter(c => c.type === filters.checkInType);
+    }
+
+    if (filters.dateRange?.start && filters.dateRange?.end) {
+      filtered = filtered.filter(c => {
+        const checkInDate = c.timestamp.toDate();
+        return checkInDate >= filters.dateRange!.start && checkInDate <= filters.dateRange!.end;
+      });
+    }
+
+    return filtered;
   }
 
   /**
