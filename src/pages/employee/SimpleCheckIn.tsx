@@ -1,10 +1,11 @@
-// src/pages/employee/SimpleCheckIn.tsx - CÓDIGO COMPLETO CORREGIDO
+// src/pages/employee/SimpleCheckIn.tsx - CON SISTEMA DE TOAST COMPLETO
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { FirestoreService } from '../../services/firestore';
 import { StorageService } from '../../services/storage';
 import { useGeolocation } from '../../hooks';
 import { Button, Input, Select, Alert } from '../../components/ui';
+import { Toast, useToast } from '../../components/ui/Toast'; // ✅ TOAST SYSTEM
 import { MapPinIcon, CameraIcon, ClockIcon, CalendarDaysIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { PRODUCT_TYPES, CHECK_IN_TYPES, TIME_OFF_TYPES } from '../../utils/constants';
 import { CheckInFormData, TimeOffFormData, Kiosk } from '../../types';
@@ -12,6 +13,7 @@ import { CheckInFormData, TimeOffFormData, Kiosk } from '../../types';
 export default function SimpleCheckIn() {
   const { user } = useAuth();
   const { location, getCurrentLocation, permission } = useGeolocation();
+  const { toast, showSuccess, showError, hideToast } = useToast(); // ✅ TOAST HOOKS
   
   // States for Check-in
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
@@ -23,7 +25,7 @@ export default function SimpleCheckIn() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  // ❌ REMOVIDO: success state - ahora usamos Toast
   
   // States for Time Off Request
   const [showTimeOffModal, setShowTimeOffModal] = useState(false);
@@ -307,7 +309,7 @@ export default function SimpleCheckIn() {
     return true;
   };
 
-  // Handle check-in submission
+  // ✅ ACTUALIZADO: Handle check-in submission CON TOAST
   const handleCheckIn = async () => {
     if (!user) return;
     
@@ -346,7 +348,11 @@ export default function SimpleCheckIn() {
         photoUrl
       );
 
-      setSuccess('✓ Check-in registrado exitosamente!');
+      // ✅ USAR TOAST EN LUGAR DE setState
+      showSuccess(
+        'Check-in registrado exitosamente',
+        `Tu ${CHECK_IN_TYPES[checkInType as keyof typeof CHECK_IN_TYPES]} ha sido registrado correctamente.`
+      );
       
       // Reset form
       setSelectedKiosk('');
@@ -355,27 +361,25 @@ export default function SimpleCheckIn() {
       setNotes('');
       removePhoto();
       
-      // Clear success message after 5 seconds
-      setTimeout(() => setSuccess(null), 5000);
     } catch (error: any) {
       console.error('Error submitting check-in:', error);
-      setError(error.message || 'Error registrando check-in');
+      showError('Error registrando check-in', error.message || 'Ha ocurrido un error inesperado');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Handle time off request
+  // ✅ ACTUALIZADO: Handle time off request CON TOAST
   const handleTimeOffRequest = async () => {
     if (!user) return;
     
     if (!timeOffType || !startDate || !endDate) {
-      alert('Por favor completa todos los campos requeridos');
+      showError('Campos requeridos', 'Por favor completa todos los campos requeridos');
       return;
     }
 
     if (timeOffType === 'incapacidad' && !reason.trim()) {
-      alert('El motivo es obligatorio para incapacidades');
+      showError('Motivo requerido', 'El motivo es obligatorio para incapacidades');
       return;
     }
 
@@ -391,7 +395,11 @@ export default function SimpleCheckIn() {
 
       await FirestoreService.createTimeOffRequest(user.id, formData);
 
-      alert('✓ Solicitud enviada exitosamente!');
+      // ✅ USAR TOAST EN LUGAR DE alert()
+      showSuccess(
+        'Solicitud enviada exitosamente',
+        'Tu solicitud de días libres ha sido enviada y está pendiente de aprobación.'
+      );
       
       // Reset form
       setTimeOffType('');
@@ -401,7 +409,7 @@ export default function SimpleCheckIn() {
       setShowTimeOffModal(false);
     } catch (error) {
       console.error('Error submitting time off request:', error);
-      alert('Error enviando solicitud');
+      showError('Error enviando solicitud', 'Ha ocurrido un error al enviar tu solicitud');
     } finally {
       setSubmittingTimeOff(false);
     }
@@ -415,16 +423,17 @@ export default function SimpleCheckIn() {
   }, [timeOffType, startDate]);
 
   const getLocationStatus = () => {
-    if (location) return '✓ Ubicación obtenida';
-    if (!permission.granted) return '❌ Permisos de ubicación requeridos';
+    if (location) return 'Ubicación obtenida';
+    if (!permission.granted) return 'Permisos de ubicación requeridos';
     return 'Obteniendo ubicación...';
   };
 
+  // ✅ ACTUALIZADO: Request location permission CON TOAST
   const requestLocationPermission = async () => {
     try {
       await getCurrentLocation();
     } catch (error) {
-      alert('Por favor permite el acceso a la ubicación en la configuración del navegador');
+      showError('Error de permisos', 'Por favor permite el acceso a la ubicación en la configuración del navegador');
     }
   };
 
@@ -432,6 +441,17 @@ export default function SimpleCheckIn() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      {/* ✅ COMPONENTE TOAST */}
+      <Toast
+        isOpen={toast.isOpen}
+        onClose={hideToast}
+        type={toast.type}
+        title={toast.title}
+        message={toast.message}
+        position="top-center"
+        duration={6000}
+      />
+
       {/* Header */}
       <div className="bg-primary-600 text-white p-4 sticky top-0 z-10">
         <div className="flex justify-between items-center">
@@ -455,13 +475,9 @@ export default function SimpleCheckIn() {
 
       <div className="max-w-md mx-auto p-4 space-y-6">
         
-        {/* Success/Error Messages */}
-        {success && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <p className="text-green-800">{success}</p>
-          </div>
-        )}
+        {/* ❌ REMOVIDO: Success Message - ahora usa Toast */}
         
+        {/* Error Message - mantener para errores de validación */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-red-800">{error}</p>
@@ -610,14 +626,14 @@ export default function SimpleCheckIn() {
                     onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
                     className="text-sm text-blue-600 hover:text-blue-800 underline flex items-center space-x-1"
                   >
-                    <span>🔄</span>
+                    <span>Cambiar</span>
                     <span>Usar cámara {facingMode === 'environment' ? 'frontal' : 'trasera'}</span>
                   </button>
                 </div>
                 
                 {/* Instrucciones */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <p className="text-blue-800 text-sm font-medium mb-1">📸 Instrucciones:</p>
+                  <p className="text-blue-800 text-sm font-medium mb-1">Instrucciones:</p>
                   <ul className="text-blue-700 text-xs space-y-1">
                     <li>• Asegúrate de estar en el kiosco correcto</li>
                     <li>• Podrás ver el preview antes de tomar la foto</li>
@@ -660,14 +676,14 @@ export default function SimpleCheckIn() {
                       className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-70"
                       title="Cambiar cámara"
                     >
-                      🔄
+                      Cambiar
                     </button>
                   )}
                   
                   {/* Indicador de cámara activa */}
                   {cameraReady && (
                     <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs">
-                      ● LIVE
+                      LIVE
                     </div>
                   )}
                 </div>
@@ -693,7 +709,7 @@ export default function SimpleCheckIn() {
                         Capturando...
                       </>
                     ) : (
-                      <>📸 Tomar Foto</>
+                      <>Tomar Foto</>
                     )}
                   </button>
                 </div>
@@ -747,7 +763,7 @@ export default function SimpleCheckIn() {
                     }}
                     className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 text-sm"
                   >
-                    📷 Tomar Nueva
+                    Tomar Nueva
                   </button>
                   <button
                     type="button"
@@ -758,13 +774,13 @@ export default function SimpleCheckIn() {
                     }}
                     className="flex-1 bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 text-sm"
                   >
-                    🔄 Cambiar Cámara
+                    Cambiar Cámara
                   </button>
                 </div>
                 
                 {/* Confirmación */}
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                  <p className="text-green-800 text-sm font-medium">✓ Foto lista para enviar</p>
+                  <p className="text-green-800 text-sm font-medium">Foto lista para enviar</p>
                   <p className="text-green-600 text-xs">La fotografía se adjuntará a tu check-in</p>
                 </div>
               </div>
