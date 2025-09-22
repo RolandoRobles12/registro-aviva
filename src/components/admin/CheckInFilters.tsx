@@ -10,38 +10,38 @@ interface CheckInFiltersProps {
   kiosks: Kiosk[];
 }
 
-export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFiltersProps) {
+export function CheckInFilters({ filters, onFiltersChange, kiosks = [] }: CheckInFiltersProps) {
   const [localFilters, setLocalFilters] = useState<Filters>(filters);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Options for dropdowns
-  const productTypeOptions = Object.entries(PRODUCT_TYPES).map(([key, label]) => ({
+  // Options for dropdowns - con verificación de que los datos existan
+  const productTypeOptions = Object.entries(PRODUCT_TYPES || {}).map(([key, label]) => ({
     value: key,
     label
   }));
 
-  const checkInTypeOptions = Object.entries(CHECK_IN_TYPES).map(([key, label]) => ({
+  const checkInTypeOptions = Object.entries(CHECK_IN_TYPES || {}).map(([key, label]) => ({
     value: key,
     label
   }));
 
-  const statusOptions = Object.entries(CHECK_IN_STATUS).map(([key, label]) => ({
+  const statusOptions = Object.entries(CHECK_IN_STATUS || {}).map(([key, label]) => ({
     value: key,
     label
   }));
 
-  const stateOptions = MEXICAN_STATES.map(state => ({
+  const stateOptions = (MEXICAN_STATES || []).map(state => ({
     value: state,
     label: state
   }));
 
-  const kioskOptions = kiosks.map(kiosk => ({
+  const kioskOptions = (kiosks || []).map(kiosk => ({
     value: kiosk.id,
-    label: `${kiosk.name} - ${PRODUCT_TYPES[kiosk.productType]} (${kiosk.id})`
+    label: `${kiosk.name} - ${PRODUCT_TYPES[kiosk.productType] || kiosk.productType} (${kiosk.id})`
   }));
 
-  // Get unique cities from kiosks
-  const cities = [...new Set(kiosks.map(k => k.city))].sort();
+  // Get unique cities from kiosks - con verificación
+  const cities = [...new Set((kiosks || []).map(k => k.city))].sort();
   const cityOptions = cities.map(city => ({
     value: city,
     label: city
@@ -137,7 +137,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
         {/* Primary Filters (Optimized for Firestore) */}
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <h4 className="text-sm font-medium text-green-800 mb-3">
-            🚀 Filtros
+            🚀 Filtros Principales
           </h4>
           
           {/* Date Range - Highest Priority */}
@@ -159,6 +159,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Kiosco - usando el formato de tu Select original */}
             <Select
               label="🏪 Kiosco específico"
               placeholder="Seleccionar kiosco..."
@@ -167,6 +168,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
               options={kioskOptions}
             />
 
+            {/* Tipo de producto */}
             <Select
               label="📦 Tipo de producto"
               placeholder="Todos los productos"
@@ -175,6 +177,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
               options={productTypeOptions}
             />
 
+            {/* Estado */}
             <Select
               label="📋 Estado"
               placeholder="Todos los estados"
@@ -258,12 +261,12 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks }: CheckInFilt
             )}
             {localFilters.productType && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                📦 {PRODUCT_TYPES[localFilters.productType]}
+                📦 {PRODUCT_TYPES[localFilters.productType as keyof typeof PRODUCT_TYPES]}
               </span>
             )}
             {localFilters.status && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                📋 {CHECK_IN_STATUS[localFilters.status]}
+                📋 {CHECK_IN_STATUS[localFilters.status as keyof typeof CHECK_IN_STATUS]}
               </span>
             )}
             {localFilters.userName && (
