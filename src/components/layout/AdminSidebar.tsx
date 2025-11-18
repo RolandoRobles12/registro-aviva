@@ -13,7 +13,8 @@ import {
   UsersIcon,
   Cog6ToothIcon,
   AdjustmentsHorizontalIcon,
-  CubeIcon
+  CubeIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
 interface AdminSidebarProps {
@@ -42,6 +43,11 @@ const navigation = [
     name: 'Días Libres',
     href: '/admin/time-off',
     icon: CalendarDaysIcon
+  },
+  {
+    name: 'Faltas',
+    href: '/admin/attendance-issues',
+    icon: ExclamationTriangleIcon
   },
   {
     name: 'Ubicaciones',
