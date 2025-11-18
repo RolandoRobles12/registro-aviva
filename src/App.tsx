@@ -18,6 +18,7 @@ import AdminUsers from './pages/admin/Users';
 import AdminConfiguration from './pages/admin/Configuration';
 import AdminSchedules from './pages/admin/Schedules'; // NUEVA PÁGINA
 import AdminReports from './pages/admin/Reports';
+import AdminHubs from './pages/admin/Hubs'; // NUEVA PÁGINA - HUBS
 
 // Layouts
 import EmployeeLayout from './components/layout/EmployeeLayout';
@@ -71,6 +72,7 @@ function App() {
               <Route path="time-off" element={<AdminTimeOffRequests />} />
               <Route path="locations" element={<AdminLocations />} />
               <Route path="schedules" element={<AdminSchedules />} /> {/* NUEVA RUTA */}
+              <Route path="hubs" element={<AdminHubs />} /> {/* NUEVA RUTA - HUBS */}
               <Route path="statistics" element={<AdminStatistics />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="configuration" element={<AdminConfiguration />} />
