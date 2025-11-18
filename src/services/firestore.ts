@@ -1266,7 +1266,7 @@ export class FirestoreService {
   // ================== PRIVATE HELPERS ==================
 
   /**
-   * Validate check-in location and timing
+   * ✅ CORREGIDO: Validate check-in location and timing
    */
   private static async validateCheckIn(
     kiosk: Kiosk, 
@@ -1285,9 +1285,11 @@ export class FirestoreService {
     const allowedRadius = kiosk.radiusOverride || config.defaultRadius || 150;
     const locationValid = distance <= allowedRadius;
 
-    // Get last lunch check-in if validating lunch return
+    // ✅ OBTENER ÚLTIMO CHECK-IN DE COMIDA SOLO SI ES REGRESO DE COMIDA
     let lastLunchCheckIn: Date | undefined;
     if (checkInType === 'regreso_comida') {
+      console.log('🍽️ Validating lunch return - getting last lunch check-in...');
+      
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -1304,10 +1306,14 @@ export class FirestoreService {
       if (!snapshot.empty) {
         const lunchData = snapshot.docs[0].data();
         lastLunchCheckIn = lunchData.timestamp.toDate();
+        console.log(`🍽️ Found lunch check-in at: ${lastLunchCheckIn.toLocaleTimeString()}`);
+      } else {
+        console.warn('⚠️ No lunch check-in found for regreso_comida validation');
+        // Esto podría ser un error - el usuario no registró comida
       }
     }
 
-    // Validate timing with schedules
+    // ✅ VALIDAR TIMING CON LÓGICA CORREGIDA
     const timingValidation = await ScheduleService.validateCheckInTiming(
       kiosk.productType,
       checkInType,
@@ -1321,22 +1327,30 @@ export class FirestoreService {
       isOnTime: timingValidation.isOnTime,
       minutesLate: timingValidation.minutesLate,
       minutesEarly: timingValidation.minutesEarly,
-      status: timingValidation.status
+      status: timingValidation.status,
+      // ✅ INFORMACIÓN ADICIONAL PARA DEBUG
+      ...(checkInType === 'regreso_comida' && {
+        lunchCheckInFound: !!lastLunchCheckIn,
+        lunchStartTime: lastLunchCheckIn?.toISOString()
+      })
     };
   }
 
   /**
-   * Determine check-in status based on validation
+   * ✅ CORREGIDO: Determine check-in status con lógica específica
    */
   private static determineCheckInStatus(validationResults: any): 'a_tiempo' | 'retrasado' | 'anticipado' | 'ubicacion_invalida' {
+    // Primero verificar ubicación
     if (!validationResults.locationValid) {
       return 'ubicacion_invalida';
     }
     
+    // Usar el status calculado por el servicio de schedules
     if (validationResults.status) {
       return validationResults.status;
     }
     
+    // Fallback (no debería llegar aquí)
     if (validationResults.minutesLate > 0) {
       return 'retrasado';
     }
