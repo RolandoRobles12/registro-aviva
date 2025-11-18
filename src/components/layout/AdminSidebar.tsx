@@ -12,7 +12,8 @@ import {
   ChartBarIcon,
   UsersIcon,
   Cog6ToothIcon,
-  AdjustmentsHorizontalIcon
+  AdjustmentsHorizontalIcon,
+  CubeIcon
 } from '@heroicons/react/24/outline';
 
 interface AdminSidebarProps {
@@ -46,6 +47,11 @@ const navigation = [
     name: 'Ubicaciones',
     href: '/admin/locations',
     icon: MapPinIcon
+  },
+  {
+    name: 'Hubs', // NUEVA OPCIÓN - HUBS
+    href: '/admin/hubs',
+    icon: CubeIcon
   },
   {
     name: 'Horarios', // NUEVA OPCIÓN

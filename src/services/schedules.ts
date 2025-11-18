@@ -229,10 +229,25 @@ export class ScheduleService {
       case 'regreso_comida':
         // Calculate based on lunch start time + duration
         if (lastLunchCheckIn) {
-          const lunchStart = lastLunchCheckIn;
-          const expectedReturn = new Date(lunchStart.getTime() + schedule.schedule.lunchDuration * 60000);
-          expectedTime = `${expectedReturn.getHours().toString().padStart(2, '0')}:${expectedReturn.getMinutes().toString().padStart(2, '0')}`;
-          isLunchReturn = true;
+          // Validar que lastLunchCheckIn sea del mismo día
+          const checkInDay = new Date(timestamp);
+          checkInDay.setHours(0, 0, 0, 0);
+          const lunchDay = new Date(lastLunchCheckIn);
+          lunchDay.setHours(0, 0, 0, 0);
+
+          if (checkInDay.getTime() === lunchDay.getTime()) {
+            const lunchStart = lastLunchCheckIn;
+            const expectedReturn = new Date(lunchStart.getTime() + schedule.schedule.lunchDuration * 60000);
+            expectedTime = `${expectedReturn.getHours().toString().padStart(2, '0')}:${expectedReturn.getMinutes().toString().padStart(2, '0')}`;
+            isLunchReturn = true;
+          } else {
+            // Si el check-in de comida es de otro día, usar hora por defecto
+            const [lunchHours, lunchMinutes] = schedule.schedule.lunchStartTime.split(':').map(Number);
+            const returnMinutes = lunchHours * 60 + lunchMinutes + schedule.schedule.lunchDuration;
+            const returnHours = Math.floor(returnMinutes / 60);
+            const returnMins = returnMinutes % 60;
+            expectedTime = `${returnHours.toString().padStart(2, '0')}:${returnMins.toString().padStart(2, '0')}`;
+          }
         } else {
           // If no lunch check-in found, use default lunch time + duration
           const [lunchHours, lunchMinutes] = schedule.schedule.lunchStartTime.split(':').map(Number);

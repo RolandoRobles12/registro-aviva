@@ -73,11 +73,12 @@ export class AttendanceService {
         const checkInsSnapshot = await getDocs(checkInsQuery);
         const checkIns = checkInsSnapshot.docs.map(d => d.data() as CheckIn);
         
-        // ✅ USAR REGLAS CONFIGURADAS DINÁMICAMENTE
-        const entryGraceMinutes = config.absenceRules?.noEntryAfterMinutes || 60;
-        const exitGraceMinutes = config.absenceRules?.noExitAfterMinutes || 120;
-        const autoCloseMinutes = config.autoCloseRules?.closeAfterMinutes || 60;
-        const maxLunchMinutes = config.lunchRules?.maxDurationMinutes || 90;
+        // ✅ USAR REGLAS CONFIGURADAS DINÁMICAMENTE con valores por defecto claros
+        const entryGraceMinutes = config.absenceRules?.noEntryAfterMinutes ?? 60;
+        const exitGraceMinutes = config.absenceRules?.noExitAfterMinutes ?? 120;
+        const autoCloseMinutes = config.autoCloseRules?.closeAfterMinutes ?? 60;
+        const maxLunchMinutes = config.lunchRules?.maxDurationMinutes ?? 90;
+        const markAsAbsent = config.autoCloseRules?.markAsAbsent ?? true;
         
         // Check for missing entry usando configuración dinámica
         const [entryHours, entryMinutes] = schedule.schedule.entryTime.split(':').map(Number);
@@ -135,7 +136,7 @@ export class AttendanceService {
         }
         
         // ✅ NUEVA: Check for auto-close usando configuración
-        if (config.autoCloseRules?.markAsAbsent) {
+        if (markAsAbsent) {
           const autoCloseDeadline = new Date(expectedExit.getTime() + autoCloseMinutes * 60 * 1000);
           
           if (now > autoCloseDeadline && 
@@ -165,29 +166,36 @@ export class AttendanceService {
         // ✅ NUEVA: Check for excessive lunch time usando configuración
         const lunchCheckIn = checkIns.find(c => c.type === 'comida');
         const lunchReturn = checkIns.find(c => c.type === 'regreso_comida');
-        
+
         if (lunchCheckIn && !lunchReturn) {
           const lunchTime = lunchCheckIn.timestamp.toDate();
-          const maxLunchDeadline = new Date(lunchTime.getTime() + maxLunchMinutes * 60 * 1000);
-          
-          if (now > maxLunchDeadline) {
-            const minutesOverdue = Math.floor((now.getTime() - maxLunchDeadline.getTime()) / (60 * 1000));
+
+          // Validar que el check-in de comida sea del mismo día
+          const lunchDay = new Date(lunchTime);
+          lunchDay.setHours(0, 0, 0, 0);
+
+          if (lunchDay.getTime() === today.getTime()) {
+            const maxLunchDeadline = new Date(lunchTime.getTime() + maxLunchMinutes * 60 * 1000);
+
+            if (now > maxLunchDeadline) {
+              const minutesOverdue = Math.floor((now.getTime() - maxLunchDeadline.getTime()) / (60 * 1000));
             
-            issues.push({
-              id: '',
-              userId: userDoc.id,
-              userName: user.name,
-              kioskId: user.assignedKiosk,
-              kioskName: user.assignedKioskName,
-              productType: user.productType,
-              type: 'late_lunch_return',
-              expectedTime: `${Math.floor(maxLunchDeadline.getHours())}:${maxLunchDeadline.getMinutes().toString().padStart(2, '0')}`,
-              detectedAt: Timestamp.now(),
-              date: Timestamp.fromDate(today),
-              resolved: false,
-              ruleTriggered: `Regreso de comida requerido antes de ${maxLunchMinutes} minutos`,
-              minutesLate: minutesOverdue
-            });
+              issues.push({
+                id: '',
+                userId: userDoc.id,
+                userName: user.name,
+                kioskId: user.assignedKiosk,
+                kioskName: user.assignedKioskName,
+                productType: user.productType,
+                type: 'late_lunch_return',
+                expectedTime: `${maxLunchDeadline.getHours().toString().padStart(2, '0')}:${maxLunchDeadline.getMinutes().toString().padStart(2, '0')}`,
+                detectedAt: Timestamp.now(),
+                date: Timestamp.fromDate(today),
+                resolved: false,
+                ruleTriggered: `Regreso de comida requerido antes de ${maxLunchMinutes} minutos`,
+                minutesLate: minutesOverdue
+              });
+            }
           }
         }
       }
