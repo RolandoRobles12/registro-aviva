@@ -33,7 +33,26 @@ export function SystemConfigForm() {
   // Estados para notificaciones
   const [notifyOnAbsence, setNotifyOnAbsence] = useState<boolean>(true);
   const [notifyOnLateExit, setNotifyOnLateExit] = useState<boolean>(false);
-  
+  const [notifyOnLateArrival, setNotifyOnLateArrival] = useState<boolean>(true);
+  const [notifyOnLongLunch, setNotifyOnLongLunch] = useState<boolean>(true);
+  const [notifySupervisor, setNotifySupervisor] = useState<boolean>(true);
+  const [notifyAdmin, setNotifyAdmin] = useState<boolean>(true);
+  const [notifyUser, setNotifyUser] = useState<boolean>(true);
+
+  // Estados para reglas de comentarios
+  const [requireOnLateArrival, setRequireOnLateArrival] = useState<boolean>(true);
+  const [requireOnEarlyDeparture, setRequireOnEarlyDeparture] = useState<boolean>(true);
+  const [requireOnLongLunch, setRequireOnLongLunch] = useState<boolean>(true);
+  const [minCommentLength, setMinCommentLength] = useState<number>(10);
+
+  // Estados para configuración de Slack
+  const [slackEnabled, setSlackEnabled] = useState<boolean>(false);
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState<string>('');
+  const [slackDefaultChannel, setSlackDefaultChannel] = useState<string>('');
+  const [slackNotifyOnLateArrival, setSlackNotifyOnLateArrival] = useState<boolean>(true);
+  const [slackNotifyOnAbsence, setSlackNotifyOnAbsence] = useState<boolean>(true);
+  const [slackNotifyOnLongLunch, setSlackNotifyOnLongLunch] = useState<boolean>(true);
+
   // Estados para alertas y aprobaciones
   const [generateOnIrregularities, setGenerateOnIrregularities] = useState<boolean>(true);
   const [requireForLateExit, setRequireForLateExit] = useState<boolean>(false);
@@ -91,7 +110,26 @@ export function SystemConfigForm() {
         // Notificaciones
         setNotifyOnAbsence(config.notificationRules?.notifyOnAbsence ?? true);
         setNotifyOnLateExit(config.notificationRules?.notifyOnLateExit ?? false);
-        
+        setNotifyOnLateArrival(config.notificationRules?.notifyOnLateArrival ?? true);
+        setNotifyOnLongLunch(config.notificationRules?.notifyOnLongLunch ?? true);
+        setNotifySupervisor(config.notificationRules?.notifySupervisor ?? true);
+        setNotifyAdmin(config.notificationRules?.notifyAdmin ?? true);
+        setNotifyUser(config.notificationRules?.notifyUser ?? true);
+
+        // Reglas de comentarios
+        setRequireOnLateArrival(config.commentRules?.requireOnLateArrival ?? true);
+        setRequireOnEarlyDeparture(config.commentRules?.requireOnEarlyDeparture ?? true);
+        setRequireOnLongLunch(config.commentRules?.requireOnLongLunch ?? true);
+        setMinCommentLength(config.commentRules?.minCommentLength ?? 10);
+
+        // Configuración de Slack
+        setSlackEnabled(config.slackConfig?.enabled ?? false);
+        setSlackWebhookUrl(config.slackConfig?.webhookUrl ?? '');
+        setSlackDefaultChannel(config.slackConfig?.defaultChannel ?? '');
+        setSlackNotifyOnLateArrival(config.slackConfig?.notifyOnLateArrival ?? true);
+        setSlackNotifyOnAbsence(config.slackConfig?.notifyOnAbsence ?? true);
+        setSlackNotifyOnLongLunch(config.slackConfig?.notifyOnLongLunch ?? true);
+
         // Alertas y aprobaciones
         setGenerateOnIrregularities(config.alertRules?.generateOnIrregularities ?? true);
         setRequireForLateExit(config.approvalRules?.requireForLateExit ?? false);
@@ -109,6 +147,21 @@ export function SystemConfigForm() {
         setMaxDurationMinutes(90);
         setNotifyOnAbsence(true);
         setNotifyOnLateExit(false);
+        setNotifyOnLateArrival(true);
+        setNotifyOnLongLunch(true);
+        setNotifySupervisor(true);
+        setNotifyAdmin(true);
+        setNotifyUser(true);
+        setRequireOnLateArrival(true);
+        setRequireOnEarlyDeparture(true);
+        setRequireOnLongLunch(true);
+        setMinCommentLength(10);
+        setSlackEnabled(false);
+        setSlackWebhookUrl('');
+        setSlackDefaultChannel('');
+        setSlackNotifyOnLateArrival(true);
+        setSlackNotifyOnAbsence(true);
+        setSlackNotifyOnLongLunch(true);
         setGenerateOnIrregularities(true);
         setRequireForLateExit(false);
       }
@@ -146,6 +199,25 @@ export function SystemConfigForm() {
         notificationRules: {
           notifyOnAbsence,
           notifyOnLateExit,
+          notifyOnLateArrival,
+          notifyOnLongLunch,
+          notifySupervisor,
+          notifyAdmin,
+          notifyUser,
+        },
+        commentRules: {
+          requireOnLateArrival,
+          requireOnEarlyDeparture,
+          requireOnLongLunch,
+          minCommentLength,
+        },
+        slackConfig: {
+          enabled: slackEnabled,
+          webhookUrl: slackWebhookUrl || undefined,
+          defaultChannel: slackDefaultChannel || undefined,
+          notifyOnLateArrival: slackNotifyOnLateArrival,
+          notifyOnAbsence: slackNotifyOnAbsence,
+          notifyOnLongLunch: slackNotifyOnLongLunch,
         },
         alertRules: {
           generateOnIrregularities,
@@ -434,12 +506,306 @@ export function SystemConfigForm() {
           </div>
         </div>
 
+        {/* Comment Rules */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            📝 Reglas de Comentarios Obligatorios
+          </h3>
+
+          <div className="space-y-4">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="requireCommentOnLateArrival"
+                checked={requireOnLateArrival}
+                onChange={(e) => setRequireOnLateArrival(e.target.checked)}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="requireCommentOnLateArrival" className="ml-2 text-sm font-medium text-gray-700">
+                Requerir comentario en entradas con retraso
+              </label>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="requireCommentOnEarlyDeparture"
+                checked={requireOnEarlyDeparture}
+                onChange={(e) => setRequireOnEarlyDeparture(e.target.checked)}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="requireCommentOnEarlyDeparture" className="ml-2 text-sm font-medium text-gray-700">
+                Requerir comentario en salidas anticipadas
+              </label>
+            </div>
+
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="requireCommentOnLongLunch"
+                checked={requireOnLongLunch}
+                onChange={(e) => setRequireOnLongLunch(e.target.checked)}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="requireCommentOnLongLunch" className="ml-2 text-sm font-medium text-gray-700">
+                Requerir comentario cuando se excede tiempo de comida
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Longitud mínima del comentario (caracteres)
+              </label>
+              <input
+                type="number"
+                min="5"
+                max="100"
+                value={minCommentLength}
+                onChange={(e) => setMinCommentLength(parseInt(e.target.value) || 10)}
+                className="block w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Número mínimo de caracteres requeridos en el comentario explicativo
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Notification Rules */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            🔔 Configuración de Notificaciones
+          </h3>
+
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+              <p className="text-sm text-blue-700">
+                <strong>Nota:</strong> Configura quién recibe notificaciones y para qué eventos.
+              </p>
+            </div>
+
+            <div className="border-b border-gray-200 pb-3 mb-3">
+              <h4 className="text-sm font-semibold text-gray-800 mb-3">Destinatarios de Notificaciones</h4>
+
+              <div className="space-y-2">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="notifyUser"
+                    checked={notifyUser}
+                    onChange={(e) => setNotifyUser(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <label htmlFor="notifyUser" className="ml-2 text-sm text-gray-700">
+                    Notificar al usuario afectado
+                  </label>
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="notifySupervisor"
+                    checked={notifySupervisor}
+                    onChange={(e) => setNotifySupervisor(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <label htmlFor="notifySupervisor" className="ml-2 text-sm text-gray-700">
+                    Notificar al supervisor del usuario
+                  </label>
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="notifyAdmin"
+                    checked={notifyAdmin}
+                    onChange={(e) => setNotifyAdmin(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <label htmlFor="notifyAdmin" className="ml-2 text-sm text-gray-700">
+                    Notificar a administradores
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-semibold text-gray-800 mb-3">Eventos que Generan Notificaciones</h4>
+
+              <div className="space-y-2">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="notifyOnLateArrival"
+                    checked={notifyOnLateArrival}
+                    onChange={(e) => setNotifyOnLateArrival(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <label htmlFor="notifyOnLateArrival" className="ml-2 text-sm text-gray-700">
+                    Notificar en entradas con retraso
+                  </label>
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="notifyOnLongLunch"
+                    checked={notifyOnLongLunch}
+                    onChange={(e) => setNotifyOnLongLunch(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <label htmlFor="notifyOnLongLunch" className="ml-2 text-sm text-gray-700">
+                    Notificar cuando se excede tiempo de comida
+                  </label>
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="notifyOnAbsenceMain"
+                    checked={notifyOnAbsence}
+                    onChange={(e) => setNotifyOnAbsence(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <label htmlFor="notifyOnAbsenceMain" className="ml-2 text-sm text-gray-700">
+                    Notificar cuando se detecta ausencia
+                  </label>
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="notifyOnLateExitMain"
+                    checked={notifyOnLateExit}
+                    onChange={(e) => setNotifyOnLateExit(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <label htmlFor="notifyOnLateExitMain" className="ml-2 text-sm text-gray-700">
+                    Notificar en salidas tardías
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Slack Configuration */}
+        <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-6 border border-purple-200">
+          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            💬 Integración con Slack
+          </h3>
+
+          <div className="space-y-4">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="slackEnabled"
+                checked={slackEnabled}
+                onChange={(e) => setSlackEnabled(e.target.checked)}
+                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              <label htmlFor="slackEnabled" className="ml-2 text-sm font-medium text-gray-700">
+                Habilitar notificaciones por Slack
+              </label>
+            </div>
+
+            {slackEnabled && (
+              <div className="space-y-4 pl-6 border-l-2 border-purple-300">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Webhook URL de Slack *
+                  </label>
+                  <input
+                    type="url"
+                    value={slackWebhookUrl}
+                    onChange={(e) => setSlackWebhookUrl(e.target.value)}
+                    placeholder="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    URL del webhook de Slack (obligatorio). <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Cómo crear un webhook</a>
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Canal por defecto (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={slackDefaultChannel}
+                    onChange={(e) => setSlackDefaultChannel(e.target.value)}
+                    placeholder="#asistencia"
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Canal donde se enviarán las notificaciones (ejemplo: #asistencia)
+                  </p>
+                </div>
+
+                <div className="bg-white rounded-md p-4">
+                  <h4 className="text-sm font-semibold text-gray-800 mb-3">Eventos para notificar en Slack</h4>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="slackNotifyOnLateArrival"
+                        checked={slackNotifyOnLateArrival}
+                        onChange={(e) => setSlackNotifyOnLateArrival(e.target.checked)}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <label htmlFor="slackNotifyOnLateArrival" className="ml-2 text-sm text-gray-700">
+                        Entradas con retraso
+                      </label>
+                    </div>
+
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="slackNotifyOnAbsence"
+                        checked={slackNotifyOnAbsence}
+                        onChange={(e) => setSlackNotifyOnAbsence(e.target.checked)}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <label htmlFor="slackNotifyOnAbsence" className="ml-2 text-sm text-gray-700">
+                        Ausencias detectadas
+                      </label>
+                    </div>
+
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="slackNotifyOnLongLunch"
+                        checked={slackNotifyOnLongLunch}
+                        onChange={(e) => setSlackNotifyOnLongLunch(e.target.checked)}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <label htmlFor="slackNotifyOnLongLunch" className="ml-2 text-sm text-gray-700">
+                        Comidas prolongadas
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {!slackWebhookUrl && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                    <p className="text-sm text-yellow-800">
+                      ⚠️ <strong>Webhook URL requerido:</strong> Debes configurar el webhook URL de Slack para poder enviar notificaciones.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Schedule Settings */}
         <div className="bg-gray-50 rounded-lg p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">
             Configuración de Horarios
           </h3>
-          
+
           <Select
             label="Día de Descanso"
             value={restDay}
