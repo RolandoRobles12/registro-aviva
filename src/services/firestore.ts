@@ -417,13 +417,17 @@ export class FirestoreService {
    * Create a new check-in with transaction safety
    */
   static async createCheckIn(
-    userId: string, 
-    formData: CheckInFormData, 
+    userId: string,
+    formData: CheckInFormData,
     location: { latitude: number; longitude: number; accuracy?: number },
     photoUrl?: string
   ): Promise<string> {
     try {
       console.log('Creating check-in for user:', userId);
+
+      let user: User;
+      let kiosk: Kiosk;
+      let config: SystemConfig;
 
       // Use transaction to ensure data consistency
       const result = await runTransaction(db, async (transaction) => {
@@ -433,10 +437,10 @@ export class FirestoreService {
           throw new Error('User not found. Please check your profile registration.');
         }
 
-        const user = { id: userDoc.id, ...userDoc.data() } as User;
+        user = { id: userDoc.id, ...userDoc.data() } as User;
 
         // Get kiosk
-        const kiosk = await this.getKioskById(formData.kioskId);
+        kiosk = await this.getKioskById(formData.kioskId);
         if (!kiosk) {
           throw new Error(`Kiosk "${formData.kioskId}" not found or inactive.`);
         }
@@ -472,6 +476,60 @@ export class FirestoreService {
       });
 
       console.log('Check-in created with ID:', result);
+
+      // ========== MOTOR DE ACCIONES DE PUNTUALIDAD ==========
+      // Ejecutar acciones después de la transacción para evitar conflictos
+      try {
+        // Obtener el check-in recién creado
+        const checkInDoc = await this.getDocument<CheckIn>('checkins', result);
+        if (checkInDoc) {
+          // Obtener configuración del sistema
+          config = await this.getSystemConfig(kiosk.productType);
+
+          // Verificar si se requiere comentario pero no se proporcionó
+          const { PunctualityActionEngine } = await import('./punctualityActionEngine');
+
+          // Validar comentario obligatorio
+          if (checkInDoc.status === 'retrasado' ||
+              (checkInDoc.status === 'anticipado' && checkInDoc.type === 'salida')) {
+            const commentRules = config.commentRules || {};
+            const minLength = commentRules.minCommentLength || 10;
+
+            const requiresComment = (
+              (checkInDoc.status === 'retrasado' && checkInDoc.type === 'entrada' && commentRules.requireOnLateArrival !== false) ||
+              (checkInDoc.status === 'retrasado' && checkInDoc.type === 'regreso_comida' && commentRules.requireOnLongLunch !== false) ||
+              (checkInDoc.status === 'anticipado' && checkInDoc.type === 'salida' && commentRules.requireOnEarlyDeparture !== false)
+            );
+
+            if (requiresComment && (!formData.notes || formData.notes.trim().length < minLength)) {
+              // Eliminar el check-in creado si no cumple con el requisito de comentario
+              await this.deleteDocument('checkins', result);
+              throw new Error(
+                `Se requiere un comentario de al menos ${minLength} caracteres para este tipo de registro. ` +
+                `Tu ${checkInDoc.type === 'entrada' ? 'entrada' : checkInDoc.type === 'regreso_comida' ? 'regreso de comida' : 'salida'} ` +
+                `se registró con ${checkInDoc.validationResults?.minutesLate || 0} minuto(s) de retraso.`
+              );
+            }
+          }
+
+          // Ejecutar el motor de acciones de puntualidad
+          const actionResult = await PunctualityActionEngine.executeActions(
+            checkInDoc,
+            user,
+            config
+          );
+
+          console.log('✅ Punctuality actions executed:', actionResult);
+        }
+      } catch (actionError) {
+        // Si es error de comentario requerido, propagarlo
+        if (actionError instanceof Error && actionError.message.includes('Se requiere un comentario')) {
+          throw actionError;
+        }
+        // No fallar la creación del check-in si las acciones fallan
+        console.error('⚠️ Error executing punctuality actions (check-in created successfully):', actionError);
+      }
+
       return result;
     } catch (error) {
       console.error('Error creating check-in:', error);
@@ -894,12 +952,29 @@ export class FirestoreService {
       notificationRules: {
         notifyOnAbsence: true,
         notifyOnLateExit: false,
+        notifyOnLateArrival: true,      // NUEVO
+        notifyOnLongLunch: true,         // NUEVO
+        notifySupervisor: true,          // NUEVO
+        notifyAdmin: true,               // NUEVO
+        notifyUser: true,                // NUEVO
       },
       alertRules: {
         generateOnIrregularities: true,
       },
       approvalRules: {
         requireForLateExit: false,
+      },
+      commentRules: {                    // NUEVO
+        requireOnLateArrival: true,
+        requireOnEarlyDeparture: true,
+        requireOnLongLunch: true,
+        minCommentLength: 10,
+      },
+      slackConfig: {                     // NUEVO
+        enabled: false,
+        notifyOnLateArrival: true,
+        notifyOnAbsence: true,
+        notifyOnLongLunch: true,
       },
       updatedAt: serverTimestamp(),
       updatedBy: 'system'
