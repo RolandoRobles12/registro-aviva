@@ -889,7 +889,7 @@ export class FirestoreService {
         markAsAbsent: true,
       },
       lunchRules: {
-        maxDurationMinutes: 90,
+        maxDurationMinutes: 60, // Máximo 1 hora de comida
       },
       notificationRules: {
         notifyOnAbsence: true,
