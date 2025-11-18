@@ -1,4 +1,4 @@
-// src/services/schedules.ts - NUEVO ARCHIVO COMPLETO
+// src/services/schedules.ts - VERSIÓN CORREGIDA Y COMPLETA
 import { collection, doc, getDoc, setDoc, query, where, getDocs, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { ProductSchedule, ProductType, Holiday } from '../types';
@@ -191,7 +191,7 @@ export class ScheduleService {
   }
 
   /**
-   * Validate check-in timing
+   * ✅ CORREGIDO: Validate check-in timing con lógica específica por tipo
    */
   static async validateCheckInTiming(
     productType: ProductType,
@@ -214,81 +214,144 @@ export class ScheduleService {
     const checkMinutes = checkTime.getMinutes();
     const checkTotalMinutes = checkHours * 60 + checkMinutes;
 
-    let expectedTime: string;
-    let isLunchReturn = false;
-
+    // ✅ LÓGICA ESPECÍFICA POR TIPO DE CHECK-IN
     switch (checkInType) {
       case 'entrada':
-        expectedTime = schedule.schedule.entryTime;
-        break;
+        return this.validateEntryTiming(schedule, checkTotalMinutes);
       
       case 'comida':
-        expectedTime = schedule.schedule.lunchStartTime;
-        break;
+        // ✅ COMIDA: SIN VALIDACIÓN DE ESTADO - siempre 'a_tiempo'
+        return { 
+          isOnTime: true, 
+          minutesLate: 0, 
+          minutesEarly: 0, 
+          status: 'a_tiempo' 
+        };
       
       case 'regreso_comida':
-        // Calculate based on lunch start time + duration
-        if (lastLunchCheckIn) {
-          const lunchStart = lastLunchCheckIn;
-          const expectedReturn = new Date(lunchStart.getTime() + schedule.schedule.lunchDuration * 60000);
-          expectedTime = `${expectedReturn.getHours().toString().padStart(2, '0')}:${expectedReturn.getMinutes().toString().padStart(2, '0')}`;
-          isLunchReturn = true;
-        } else {
-          // If no lunch check-in found, use default lunch time + duration
-          const [lunchHours, lunchMinutes] = schedule.schedule.lunchStartTime.split(':').map(Number);
-          const returnMinutes = lunchHours * 60 + lunchMinutes + schedule.schedule.lunchDuration;
-          const returnHours = Math.floor(returnMinutes / 60);
-          const returnMins = returnMinutes % 60;
-          expectedTime = `${returnHours.toString().padStart(2, '0')}:${returnMins.toString().padStart(2, '0')}`;
-        }
-        break;
+        // ✅ REGRESO COMIDA: VALIDAR DURACIÓN DE 1 HORA DESDE LA COMIDA
+        return this.validateLunchReturnTiming(schedule, checkTime, lastLunchCheckIn);
       
       case 'salida':
-        expectedTime = schedule.schedule.exitTime;
-        break;
+        return this.validateExitTiming(schedule, checkTotalMinutes);
       
       default:
         return { isOnTime: true, minutesLate: 0, minutesEarly: 0, status: 'a_tiempo' };
     }
+  }
 
-    const [expectedHours, expectedMinutes] = expectedTime.split(':').map(Number);
+  /**
+   * ✅ Validar timing de entrada
+   */
+  private static validateEntryTiming(
+    schedule: ProductSchedule, 
+    checkTotalMinutes: number
+  ) {
+    const [expectedHours, expectedMinutes] = schedule.schedule.entryTime.split(':').map(Number);
     const expectedTotalMinutes = expectedHours * 60 + expectedMinutes;
-
     const difference = checkTotalMinutes - expectedTotalMinutes;
 
-    // For lunch return, strict 1-hour limit
-    if (isLunchReturn && lastLunchCheckIn) {
-      const lunchDuration = (checkTime.getTime() - lastLunchCheckIn.getTime()) / 60000;
-      if (lunchDuration > schedule.schedule.lunchDuration) {
-        const minutesLate = Math.round(lunchDuration - schedule.schedule.lunchDuration);
-        return { isOnTime: false, minutesLate, minutesEarly: 0, status: 'retrasado' };
-      }
-    }
-
-    // Apply tolerance
     if (difference > schedule.toleranceMinutes) {
-      // Late
+      // Tarde
       return { 
         isOnTime: false, 
         minutesLate: difference, 
         minutesEarly: 0, 
-        status: 'retrasado' 
+        status: 'retrasado' as const
       };
     } else if (difference < -30) {
-      // Too early (more than 30 minutes early)
+      // Muy temprano (más de 30 minutos antes)
       return { 
         isOnTime: false, 
         minutesLate: 0, 
         minutesEarly: Math.abs(difference), 
-        status: 'anticipado' 
+        status: 'anticipado' as const
       };
     } else {
-      // On time
+      // A tiempo
       return { 
         isOnTime: true, 
         minutesLate: 0, 
         minutesEarly: 0, 
-        status: 'a_tiempo' 
+        status: 'a_tiempo' as const
+      };
+    }
+  }
+
+  /**
+   * ✅ Validar timing de regreso de comida (duración máxima de 1 hora)
+   */
+  private static validateLunchReturnTiming(
+    schedule: ProductSchedule,
+    checkTime: Date,
+    lastLunchCheckIn?: Date
+  ) {
+    if (!lastLunchCheckIn) {
+      // Si no hay registro de comida, no podemos validar
+      console.warn('No lunch check-in found for lunch return validation');
+      return { 
+        isOnTime: true, 
+        minutesLate: 0, 
+        minutesEarly: 0, 
+        status: 'a_tiempo' as const
+      };
+    }
+
+    // ✅ CALCULAR DURACIÓN REAL DE LA COMIDA
+    const lunchDurationMs = checkTime.getTime() - lastLunchCheckIn.getTime();
+    const actualLunchMinutes = Math.round(lunchDurationMs / 60000);
+    
+    // ✅ LÍMITE ESTRICTO: duración configurada (típicamente 60 minutos)
+    const maxLunchMinutes = schedule.schedule.lunchDuration;
+
+    console.log(`🍽️ Lunch duration: ${actualLunchMinutes}min (max: ${maxLunchMinutes}min)`);
+
+    if (actualLunchMinutes > maxLunchMinutes) {
+      // Regreso tarde de comida
+      const minutesLate = actualLunchMinutes - maxLunchMinutes;
+      return { 
+        isOnTime: false, 
+        minutesLate, 
+        minutesEarly: 0, 
+        status: 'retrasado' as const
+      };
+    } else {
+      // Regreso a tiempo
+      return { 
+        isOnTime: true, 
+        minutesLate: 0, 
+        minutesEarly: 0, 
+        status: 'a_tiempo' as const
+      };
+    }
+  }
+
+  /**
+   * ✅ Validar timing de salida
+   */
+  private static validateExitTiming(
+    schedule: ProductSchedule, 
+    checkTotalMinutes: number
+  ) {
+    const [expectedHours, expectedMinutes] = schedule.schedule.exitTime.split(':').map(Number);
+    const expectedTotalMinutes = expectedHours * 60 + expectedMinutes;
+    const difference = checkTotalMinutes - expectedTotalMinutes;
+
+    if (difference < -60) {
+      // Salida muy temprana (más de 1 hora antes)
+      return { 
+        isOnTime: false, 
+        minutesLate: 0, 
+        minutesEarly: Math.abs(difference), 
+        status: 'anticipado' as const
+      };
+    } else {
+      // Para salidas, normalmente se permite salir a tiempo o tarde
+      return { 
+        isOnTime: true, 
+        minutesLate: Math.max(0, difference), 
+        minutesEarly: 0, 
+        status: 'a_tiempo' as const
       };
     }
   }
