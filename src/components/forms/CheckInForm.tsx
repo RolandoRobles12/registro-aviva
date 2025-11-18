@@ -272,13 +272,18 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
       </div>
 
       {/* Notes */}
-      <Input
-        label="Notas (Opcional)"
-        value={values.notes || ''}
-        onChange={(e) => setValue('notes', e.target.value)}
-        placeholder="Añade cualquier comentario relevante aquí..."
-        error={errors.notes}
-      />
+      <div className="space-y-2">
+        <Input
+          label="Comentarios"
+          value={values.notes || ''}
+          onChange={(e) => setValue('notes', e.target.value)}
+          placeholder="Añade cualquier comentario relevante aquí... (mínimo 10 caracteres si hay retraso)"
+          error={errors.notes}
+        />
+        <p className="text-xs text-gray-500">
+          Si llegas tarde, sales temprano o excedes tu tiempo de comida, se requiere un comentario de al menos 10 caracteres explicando el motivo.
+        </p>
+      </div>
 
       {/* Submit Button */}
       <div className="flex justify-end">
