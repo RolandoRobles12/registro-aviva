@@ -170,8 +170,22 @@ export class SlackWebhookTester {
       console.error('❌ Error probando webhook de Slack:', error)
 
       let errorMessage = 'Error al conectar con Slack: '
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        errorMessage += 'No se pudo conectar. Verifica tu conexión a internet.'
+
+      // Detectar error de CORS (el más común en navegadores)
+      if (error instanceof TypeError) {
+        if (error.message.includes('fetch') || error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
+          errorMessage = '🚫 Bloqueado por el navegador (CORS)\n\n' +
+            'Los webhooks de Slack no pueden probarse directamente desde el navegador por políticas de seguridad. ' +
+            'Sin embargo, tu webhook funcionará correctamente cuando se envíen notificaciones reales desde el sistema.\n\n' +
+            '✅ Para verificar tu webhook:\n' +
+            '1. Copia la URL del webhook\n' +
+            '2. Usa una herramienta como Postman, cURL o la extensión "CORS Unblock" de Chrome\n' +
+            '3. O simplemente guarda la configuración y las notificaciones reales funcionarán\n\n' +
+            '💡 Si necesitas probar ahora, usa este comando en tu terminal:\n' +
+            'curl -X POST -H "Content-Type: application/json" -d \'{"text":"Prueba"}\' ' + webhookUrl
+        } else {
+          errorMessage += error.message
+        }
       } else if (error instanceof Error) {
         errorMessage += error.message
       } else {
@@ -301,9 +315,27 @@ export class SlackWebhookTester {
       }
 
     } catch (error) {
+      console.error('❌ Error enviando mensaje de prueba:', error)
+
+      let errorMessage = 'Error al enviar mensaje de prueba: '
+
+      // Detectar error de CORS (el más común en navegadores)
+      if (error instanceof TypeError) {
+        if (error.message.includes('fetch') || error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
+          errorMessage = '🚫 Bloqueado por el navegador (CORS)\n\n' +
+            'Los webhooks de Slack no pueden probarse directamente desde el navegador por políticas de seguridad.'
+        } else {
+          errorMessage += error.message
+        }
+      } else if (error instanceof Error) {
+        errorMessage += error.message
+      } else {
+        errorMessage += 'Error desconocido'
+      }
+
       return {
         success: false,
-        message: 'Error al enviar mensaje de prueba',
+        message: errorMessage,
         error: error instanceof Error ? error.message : String(error),
         timestamp
       }

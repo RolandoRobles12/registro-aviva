@@ -404,6 +404,10 @@ export class PunctualityActionEngine {
 
   /**
    * Envía notificación vía Slack
+   *
+   * NOTA: Este método puede fallar en navegadores por políticas CORS.
+   * Para producción, se recomienda usar Firebase Cloud Functions para enviar
+   * las notificaciones de Slack desde el backend.
    */
   private static async notifySlack(
     checkIn: CheckIn,
@@ -455,11 +459,26 @@ export class PunctualityActionEngine {
       }
     } catch (error) {
       console.error('❌ Error enviando notificación a Slack:', error)
+
+      let errorMessage = 'Error desconocido'
+
+      // Detectar error de CORS
+      if (error instanceof TypeError) {
+        if (error.message.includes('fetch') || error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
+          errorMessage = 'Bloqueado por CORS del navegador. Se recomienda usar Cloud Functions para notificaciones de Slack.'
+          console.warn('⚠️ [PunctualityActionEngine] Las notificaciones de Slack están bloqueadas por CORS. Considere implementar Cloud Functions.')
+        } else {
+          errorMessage = error.message
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
       return {
         type: 'notify_slack',
         executedAt: Timestamp.now(),
         success: false,
-        error: error instanceof Error ? error.message : 'Error desconocido'
+        error: errorMessage
       }
     }
   }
