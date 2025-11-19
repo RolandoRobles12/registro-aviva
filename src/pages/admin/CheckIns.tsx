@@ -2,18 +2,20 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { FirestoreService } from '../../services/firestore';
+import { HubService } from '../../services/hubs';
 import { CheckInFilters } from '../../components/admin/CheckInFilters';
 import { CheckInTable } from '../../components/admin/CheckInTable';
 import { CheckInStats } from '../../components/admin/CheckInStats';
 import { ExportButton } from '../../components/admin/ExportButton';
 import { LoadingSpinner, Alert } from '../../components/ui';
-import { CheckIn, CheckInFilters as Filters, Kiosk } from '../../types';
+import { CheckIn, CheckInFilters as Filters, Kiosk, Hub } from '../../types';
 import { generateReportData } from '../../utils/export';
 import { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
 export default function AdminCheckIns() {
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
+  const [hubs, setHubs] = useState<Hub[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +37,12 @@ export default function AdminCheckIns() {
 
   const loadInitialData = async () => {
     try {
-      const kiosksList = await FirestoreService.getActiveKiosks();
+      const [kiosksList, hubsList] = await Promise.all([
+        FirestoreService.getActiveKiosks(),
+        HubService.getAllHubs(true) // Solo hubs activos
+      ]);
       setKiosks(kiosksList);
+      setHubs(hubsList);
     } catch (error) {
       console.error('Error loading initial data:', error);
       setError('Error cargando datos iniciales');
@@ -219,6 +225,7 @@ export default function AdminCheckIns() {
         filters={filters}
         onFiltersChange={handleFiltersChange}
         kiosks={kiosks}
+        hubs={hubs}
       />
 
       {/* Stats - Solo mostrar si hay datos */}

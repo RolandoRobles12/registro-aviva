@@ -218,11 +218,11 @@ export class FirestoreService {
       console.log(`🔍 User name filter: ${filtered.length} remaining`);
     }
 
-    // Geographic filters (require kiosk data)
-    if (filters.state || filters.city) {
-      console.log('🔗 Loading kiosk data for geographic filtering...');
+    // Geographic filters and hub filter (require kiosk data)
+    if (filters.state || filters.city || filters.hubId) {
+      console.log('🔗 Loading kiosk data for geographic/hub filtering...');
       kioskMap = await this.loadKioskMap();
-      
+
       if (filters.state) {
         filtered = filtered.filter(c => {
           const kiosk = kioskMap!.get(c.kioskId);
@@ -237,6 +237,14 @@ export class FirestoreService {
           return kiosk?.city === filters.city;
         });
         console.log(`🏙️ City filter (${filters.city}): ${filtered.length} remaining`);
+      }
+
+      if (filters.hubId) {
+        filtered = filtered.filter(c => {
+          const kiosk = kioskMap!.get(c.kioskId);
+          return kiosk?.hubId === filters.hubId;
+        });
+        console.log(`🏢 Hub filter (${filters.hubId}): ${filtered.length} remaining`);
       }
     }
 
