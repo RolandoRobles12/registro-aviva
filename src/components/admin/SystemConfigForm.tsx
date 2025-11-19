@@ -4,6 +4,7 @@ import { FirestoreService } from '../../services/firestore';
 import { SystemConfig, ProductType } from '../../types';
 import { PRODUCT_TYPES } from '../../utils/constants';
 import { ArrowDownTrayIcon as SaveIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { SlackWebhookTester } from './SlackWebhookTester';
 
 export function SystemConfigForm() {
   // Estados locales directos para cada campo
@@ -52,6 +53,7 @@ export function SystemConfigForm() {
   const [slackNotifyOnLateArrival, setSlackNotifyOnLateArrival] = useState<boolean>(true);
   const [slackNotifyOnAbsence, setSlackNotifyOnAbsence] = useState<boolean>(true);
   const [slackNotifyOnLongLunch, setSlackNotifyOnLongLunch] = useState<boolean>(true);
+  const [webhookUrlValid, setWebhookUrlValid] = useState<boolean | null>(null);
 
   // Estados para alertas y aprobaciones
   const [generateOnIrregularities, setGenerateOnIrregularities] = useState<boolean>(true);
@@ -172,6 +174,18 @@ export function SystemConfigForm() {
       setLoading(false);
     }
   };
+
+  // Validar webhook URL cuando cambia
+  useEffect(() => {
+    if (!slackWebhookUrl || slackWebhookUrl.trim() === '') {
+      setWebhookUrlValid(null);
+      return;
+    }
+
+    // Validar formato de URL de Slack
+    const isValid = slackWebhookUrl.startsWith('https://hooks.slack.com/');
+    setWebhookUrlValid(isValid);
+  }, [slackWebhookUrl]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -787,14 +801,41 @@ export function SystemConfigForm() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Webhook URL de Slack <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="url"
-                    value={slackWebhookUrl}
-                    onChange={(e) => setSlackWebhookUrl(e.target.value)}
-                    placeholder="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-                    disabled={!slackEnabled}
-                    className="block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed font-mono text-xs"
-                  />
+                  <div className="relative">
+                    <input
+                      type="url"
+                      value={slackWebhookUrl}
+                      onChange={(e) => setSlackWebhookUrl(e.target.value)}
+                      placeholder="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+                      disabled={!slackEnabled}
+                      className={`
+                        block w-full px-4 py-3 pr-10 border rounded-lg shadow-sm focus:outline-none focus:ring-2 sm:text-sm disabled:bg-gray-100 disabled:cursor-not-allowed font-mono text-xs
+                        ${
+                          webhookUrlValid === true
+                            ? 'border-green-300 focus:border-green-500 focus:ring-green-500'
+                            : webhookUrlValid === false
+                            ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                            : 'border-gray-300 focus:border-purple-500 focus:ring-purple-500'
+                        }
+                      `}
+                    />
+                    {slackWebhookUrl && (
+                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        {webhookUrlValid === true && (
+                          <span className="text-green-500 text-xl" title="URL válida">✓</span>
+                        )}
+                        {webhookUrlValid === false && (
+                          <span className="text-red-500 text-xl" title="URL inválida">✗</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {webhookUrlValid === false && slackWebhookUrl && (
+                    <p className="mt-1 text-xs text-red-600 flex items-center space-x-1">
+                      <span>⚠️</span>
+                      <span>La URL debe comenzar con https://hooks.slack.com/</span>
+                    </p>
+                  )}
                   <div className="mt-2 flex items-start space-x-2">
                     <span className="text-xs">💡</span>
                     <div className="text-xs text-gray-600">
@@ -907,6 +948,13 @@ export function SystemConfigForm() {
                 </div>
               </div>
             </div>
+
+            {/* Componente de prueba del webhook */}
+            <SlackWebhookTester
+              webhookUrl={slackWebhookUrl}
+              channel={slackDefaultChannel}
+              disabled={!slackEnabled}
+            />
 
             {slackEnabled && slackWebhookUrl && (
               <div className="bg-green-50 border-l-4 border-green-500 rounded-md p-4">
