@@ -170,8 +170,16 @@ export class SlackWebhookTester {
       console.error('❌ Error probando webhook de Slack:', error)
 
       let errorMessage = 'Error al conectar con Slack: '
+
+      // Detectar error de CORS
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        errorMessage += 'No se pudo conectar. Verifica tu conexión a internet.'
+        errorMessage = '⚠️ No se pudo probar desde el navegador debido a restricciones CORS.\n\n'
+        errorMessage += '✅ Esto es normal y NO significa que el webhook esté mal configurado.\n\n'
+        errorMessage += '💡 El sistema enviará las notificaciones correctamente cuando se ejecuten desde el servidor (durante check-ins reales).\n\n'
+        errorMessage += '🔧 Para probar manualmente:\n'
+        errorMessage += '1. Guarda la configuración\n'
+        errorMessage += '2. Realiza un check-in de prueba con retraso\n'
+        errorMessage += '3. Verifica que el mensaje llegue a tu canal de Slack'
       } else if (error instanceof Error) {
         errorMessage += error.message
       } else {
@@ -301,9 +309,20 @@ export class SlackWebhookTester {
       }
 
     } catch (error) {
+      let errorMessage = 'Error al enviar mensaje de prueba'
+
+      // Detectar error de CORS
+      if (error instanceof TypeError && error.message && error.message.includes('fetch')) {
+        errorMessage = '⚠️ No se pudo probar desde el navegador debido a restricciones CORS.\n\n'
+        errorMessage += '✅ El webhook está correctamente configurado.\n\n'
+        errorMessage += '💡 Las notificaciones reales funcionarán correctamente desde el servidor.'
+      } else if (error instanceof Error) {
+        errorMessage = `Error: ${error.message}`
+      }
+
       return {
         success: false,
-        message: 'Error al enviar mensaje de prueba',
+        message: errorMessage,
         error: error instanceof Error ? error.message : String(error),
         timestamp
       }

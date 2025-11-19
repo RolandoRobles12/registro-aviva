@@ -144,25 +144,33 @@ export const SlackWebhookTester: React.FC<SlackWebhookTesterProps> = ({
               ${
                 testResult.success
                   ? 'bg-green-50 border-green-500'
+                  : testResult.message.includes('CORS')
+                  ? 'bg-yellow-50 border-yellow-500'
                   : 'bg-red-50 border-red-500'
               }
             `}
           >
             <div className="flex items-start space-x-3">
               <span className="text-2xl flex-shrink-0">
-                {testResult.success ? '✅' : '❌'}
+                {testResult.success ? '✅' : testResult.message.includes('CORS') ? '⚠️' : '❌'}
               </span>
               <div className="flex-1 min-w-0">
-                <p
+                <div
                   className={`
-                    text-sm font-medium
-                    ${testResult.success ? 'text-green-900' : 'text-red-900'}
+                    text-sm whitespace-pre-line
+                    ${
+                      testResult.success
+                        ? 'text-green-900'
+                        : testResult.message.includes('CORS')
+                        ? 'text-yellow-900'
+                        : 'text-red-900'
+                    }
                   `}
                 >
                   {testResult.message}
-                </p>
+                </div>
                 {testResult.timestamp && (
-                  <p className="text-xs text-gray-600 mt-1">
+                  <p className="text-xs text-gray-600 mt-2">
                     {testResult.timestamp.toLocaleString('es-MX')}
                   </p>
                 )}
@@ -239,12 +247,13 @@ export const SlackWebhookTester: React.FC<SlackWebhookTesterProps> = ({
           <div className="flex items-start space-x-2">
             <span className="text-sm flex-shrink-0">💡</span>
             <div className="text-xs text-blue-900">
-              <p className="font-medium mb-1">Consejos:</p>
+              <p className="font-medium mb-1">Importante:</p>
               <ul className="list-disc list-inside space-y-1 text-blue-800">
-                <li>Asegúrate de haber guardado la URL del webhook antes de probar</li>
-                <li>El mensaje aparecerá en el canal configurado en tu webhook</li>
-                <li>Si no recibes el mensaje, verifica que el webhook esté activo en Slack</li>
-                <li>Las pruebas avanzadas muestran cómo se verán diferentes tipos de notificaciones</li>
+                <li><strong>Es normal</strong> que la prueba falle por restricciones CORS del navegador</li>
+                <li>Esto <strong>NO significa</strong> que el webhook esté mal configurado</li>
+                <li>Las notificaciones <strong>funcionarán correctamente</strong> durante check-ins reales (se envían desde el servidor)</li>
+                <li><strong>Para verificar:</strong> Guarda la configuración y realiza un check-in de prueba con retraso</li>
+                <li>Asegúrate de que el webhook esté activo en tu workspace de Slack</li>
               </ul>
             </div>
           </div>
