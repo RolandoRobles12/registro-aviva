@@ -153,16 +153,16 @@ export const SlackWebhookTester: React.FC<SlackWebhookTesterProps> = ({
                 {testResult.success ? '✅' : '❌'}
               </span>
               <div className="flex-1 min-w-0">
-                <p
+                <div
                   className={`
-                    text-sm font-medium
+                    text-sm font-medium whitespace-pre-line
                     ${testResult.success ? 'text-green-900' : 'text-red-900'}
                   `}
                 >
                   {testResult.message}
-                </p>
+                </div>
                 {testResult.timestamp && (
-                  <p className="text-xs text-gray-600 mt-1">
+                  <p className="text-xs text-gray-600 mt-2">
                     {testResult.timestamp.toLocaleString('es-MX')}
                   </p>
                 )}
@@ -234,6 +234,21 @@ export const SlackWebhookTester: React.FC<SlackWebhookTesterProps> = ({
           )}
         </div>
 
+        {/* Advertencia sobre CORS */}
+        <div className="bg-yellow-50 border border-yellow-300 rounded-md p-3">
+          <div className="flex items-start space-x-2">
+            <span className="text-sm flex-shrink-0">⚠️</span>
+            <div className="text-xs text-yellow-900">
+              <p className="font-medium mb-1">Limitaciones del navegador:</p>
+              <p className="text-yellow-800">
+                Algunos navegadores pueden bloquear las pruebas de webhook por políticas de seguridad CORS.
+                Si recibes un error de conexión, no te preocupes: <strong>las notificaciones reales del sistema funcionarán correctamente</strong>.
+                El webhook solo se usa internamente y no está sujeto a estas restricciones del navegador.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Tips */}
         <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
           <div className="flex items-start space-x-2">
@@ -245,6 +260,7 @@ export const SlackWebhookTester: React.FC<SlackWebhookTesterProps> = ({
                 <li>El mensaje aparecerá en el canal configurado en tu webhook</li>
                 <li>Si no recibes el mensaje, verifica que el webhook esté activo en Slack</li>
                 <li>Las pruebas avanzadas muestran cómo se verán diferentes tipos de notificaciones</li>
+                <li>Para probar fuera del navegador, usa Postman, cURL o extensiones CORS</li>
               </ul>
             </div>
           </div>
