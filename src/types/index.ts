@@ -349,10 +349,33 @@ export interface SlackNotification {
     text?: {
       type: string
       text: string
+      emoji?: boolean
     }
     fields?: Array<{
       type: string
       text: string
+    }>
+    accessory?: {
+      type: string
+      text?: {
+        type: string
+        text: string
+      }
+      url?: string
+    }
+  }>
+  attachments?: Array<{
+    color?: string
+    blocks?: Array<{
+      type: string
+      text?: {
+        type: string
+        text: string
+      }
+      fields?: Array<{
+        type: string
+        text: string
+      }>
     }>
   }>
 }

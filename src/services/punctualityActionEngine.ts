@@ -198,7 +198,7 @@ export class PunctualityActionEngine {
     config: SystemConfig
   ): Promise<PunctualityAction[]> {
     const actions: PunctualityAction[] = []
-    const notificationRules = config.notificationRules || {}
+    const notificationRules = config.notificationRules
 
     // Determinar tipo de notificación
     const notificationType = this.getNotificationType(checkIn)
@@ -214,19 +214,19 @@ export class PunctualityActionEngine {
     }
 
     // 1. Notificar al usuario
-    if (notificationRules.notifyUser !== false) {
+    if (notificationRules?.notifyUser !== false) {
       const action = await this.notifyUser(checkIn, user, notificationType)
       actions.push(action)
     }
 
     // 2. Notificar al supervisor
-    if (notificationRules.notifySupervisor !== false && user.supervisorId) {
+    if (notificationRules?.notifySupervisor !== false && user.supervisorId) {
       const action = await this.notifySupervisor(checkIn, user, notificationType)
       actions.push(action)
     }
 
     // 3. Notificar a administradores
-    if (notificationRules.notifyAdmin !== false) {
+    if (notificationRules?.notifyAdmin !== false) {
       const action = await this.notifyAdmins(checkIn, user, notificationType)
       actions.push(action)
     }
@@ -420,7 +420,7 @@ export class PunctualityActionEngine {
         }
       }
 
-      const slackMessage = this.buildSlackMessage(checkIn, user)
+      const slackMessage = this.buildSlackMessage(checkIn, user, config)
 
       const response = await fetch(config.slackConfig.webhookUrl, {
         method: 'POST',
@@ -487,25 +487,25 @@ export class PunctualityActionEngine {
    * Determina si se debe requerir comentario obligatorio
    */
   private static shouldRequireComment(checkIn: CheckIn, config: SystemConfig): boolean {
-    const commentRules = config.commentRules || {}
+    const commentRules = config.commentRules
 
     // Si ya tiene comentario, no es necesario requerir
-    if (checkIn.notes && checkIn.notes.trim().length >= (commentRules.minCommentLength || 10)) {
+    if (checkIn.notes && checkIn.notes.trim().length >= (commentRules?.minCommentLength || 10)) {
       return false
     }
 
     // Verificar según el tipo de check-in y estado
     if (checkIn.status === 'retrasado') {
-      if (checkIn.type === 'entrada' && commentRules.requireOnLateArrival !== false) {
+      if (checkIn.type === 'entrada' && commentRules?.requireOnLateArrival !== false) {
         return true
       }
-      if (checkIn.type === 'regreso_comida' && commentRules.requireOnLongLunch !== false) {
+      if (checkIn.type === 'regreso_comida' && commentRules?.requireOnLongLunch !== false) {
         return true
       }
     }
 
     if (checkIn.status === 'anticipado' && checkIn.type === 'salida') {
-      if (commentRules.requireOnEarlyDeparture !== false) {
+      if (commentRules?.requireOnEarlyDeparture !== false) {
         return true
       }
     }
@@ -537,18 +537,18 @@ export class PunctualityActionEngine {
    * Verifica si debe notificar según el tipo de evento
    */
   private static shouldNotifyForType(checkIn: CheckIn, config: SystemConfig): boolean {
-    const notificationRules = config.notificationRules || {}
+    const notificationRules = config.notificationRules
 
     if (checkIn.status === 'retrasado' && checkIn.type === 'entrada') {
-      return notificationRules.notifyOnLateArrival !== false
+      return notificationRules?.notifyOnLateArrival !== false
     }
 
     if (checkIn.status === 'retrasado' && checkIn.type === 'regreso_comida') {
-      return notificationRules.notifyOnLongLunch !== false
+      return notificationRules?.notifyOnLongLunch !== false
     }
 
     if (checkIn.status === 'anticipado' && checkIn.type === 'salida') {
-      return notificationRules.notifyOnLateExit !== false
+      return notificationRules?.notifyOnLateExit !== false
     }
 
     return true
@@ -626,9 +626,9 @@ export class PunctualityActionEngine {
   }
 
   /**
-   * Construye el mensaje para Slack
+   * Construye el mensaje para Slack con formato enriquecido
    */
-  private static buildSlackMessage(checkIn: CheckIn, user: User): SlackNotification {
+  private static buildSlackMessage(checkIn: CheckIn, user: User, config?: SystemConfig): SlackNotification {
     const minutesLate = checkIn.validationResults?.minutesLate || 0
     const typeLabels: Record<string, string> = {
       entrada: 'Entrada',
@@ -638,45 +638,156 @@ export class PunctualityActionEngine {
     }
 
     const typeLabel = typeLabels[checkIn.type] || checkIn.type
-    const emoji = checkIn.status === 'retrasado' ? '⚠️' : '📍'
 
+    // Determinar emoji y color según el estado y severidad
+    let emoji = '📍'
+    let color = '#36a64f' // Verde por defecto (a tiempo)
+    let statusText = 'A tiempo'
+
+    if (checkIn.status === 'retrasado') {
+      const severeThreshold = config?.severeDelayThreshold || 20
+
+      if (minutesLate >= severeThreshold) {
+        emoji = '🔴'
+        color = '#e01e5a' // Rojo (retraso severo)
+        statusText = `⚠️ RETRASO SEVERO (${minutesLate} min)`
+      } else if (minutesLate > 10) {
+        emoji = '🟡'
+        color = '#ECB22E' // Amarillo (retraso moderado)
+        statusText = `⚠️ Retrasado (${minutesLate} min)`
+      } else {
+        emoji = '🟠'
+        color = '#f2c744' // Naranja (retraso leve)
+        statusText = `Retraso leve (${minutesLate} min)`
+      }
+    } else if (checkIn.status === 'anticipado') {
+      emoji = '⚡'
+      color = '#4A90E2' // Azul
+      statusText = 'Anticipado'
+    }
+
+    // Construir texto principal
     let text = `${emoji} *${user.name}* - ${typeLabel}`
     if (checkIn.status === 'retrasado') {
       text += ` con ${minutesLate} min de retraso`
     }
 
+    // Construir campos informativos
+    const fields: Array<{ type: string; text: string }> = [
+      {
+        type: 'mrkdwn',
+        text: `*👤 Usuario:*\n${user.name}${user.email ? `\n_${user.email}_` : ''}`
+      },
+      {
+        type: 'mrkdwn',
+        text: `*📍 Ubicación:*\n${checkIn.kioskName}`
+      },
+      {
+        type: 'mrkdwn',
+        text: `*⏰ Hora:*\n${new Date(checkIn.timestamp.toMillis()).toLocaleString('es-MX', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          day: '2-digit',
+          month: 'short'
+        })}`
+      },
+      {
+        type: 'mrkdwn',
+        text: `*📊 Estado:*\n${statusText}`
+      }
+    ]
+
+    // Agregar información del supervisor si existe
+    if (user.supervisorName) {
+      fields.push({
+        type: 'mrkdwn',
+        text: `*👔 Supervisor:*\n${user.supervisorName}`
+      })
+    }
+
+    // Agregar información del producto si existe
+    if (checkIn.productType) {
+      fields.push({
+        type: 'mrkdwn',
+        text: `*🏢 Producto:*\n${checkIn.productType}`
+      })
+    }
+
+    // Agregar acumulado de minutos tarde si existe y hay retraso
+    if (checkIn.status === 'retrasado' && user.totalLateMinutes !== undefined) {
+      const totalAfterThis = (user.totalLateMinutes || 0) + minutesLate
+      fields.push({
+        type: 'mrkdwn',
+        text: `*📈 Minutos acumulados:*\n${totalAfterThis} min totales`
+      })
+    }
+
+    // Bloque principal del mensaje
+    const mainBlocks: SlackNotification['blocks'] = [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: `${emoji} Registro de ${typeLabel}`,
+          emoji: true
+        }
+      },
+      {
+        type: 'section',
+        fields
+      }
+    ]
+
+    // Agregar contexto si hay comentario
+    if (checkIn.notes) {
+      mainBlocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*💬 Comentario:*\n_"${checkIn.notes}"_`
+        }
+      })
+    } else if (checkIn.requiresComment) {
+      mainBlocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*⚠️ Se requiere comentario explicativo*`
+        }
+      })
+    }
+
+    // Agregar divider
+    mainBlocks.push({
+      type: 'divider' as any
+    })
+
+    // Agregar contexto adicional
+    const contextText = [
+      `🕐 Sistema de Asistencia AVIVA`,
+      checkIn.id ? `ID: ${checkIn.id.slice(0, 8)}...` : ''
+    ].filter(Boolean).join(' • ')
+
+    mainBlocks.push({
+      type: 'context' as any,
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: contextText
+        }
+      ]
+    } as any)
+
     return {
-      username: 'Sistema de Asistencia',
+      username: 'Sistema de Asistencia AVIVA',
       icon_emoji: ':clock1:',
       text,
-      blocks: [
+      blocks: mainBlocks,
+      attachments: [
         {
-          type: 'header',
-          text: {
-            type: 'plain_text',
-            text: `${emoji} Registro de ${typeLabel}`
-          }
-        },
-        {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*Usuario:*\n${user.name}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Ubicación:*\n${checkIn.kioskName}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Estado:*\n${checkIn.status === 'retrasado' ? `⚠️ Retrasado (${minutesLate} min)` : checkIn.status}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Hora:*\n${new Date(checkIn.timestamp.toMillis()).toLocaleTimeString('es-MX')}`
-            }
-          ]
+          color,
+          blocks: []
         }
       ]
     }
