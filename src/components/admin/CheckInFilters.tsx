@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Input, Select } from '../ui';
-import { CheckInFilters as Filters, Kiosk } from '../../types';
+import { CheckInFilters as Filters, Kiosk, Hub } from '../../types';
 import { PRODUCT_TYPES, CHECK_IN_TYPES, CHECK_IN_STATUS, MEXICAN_STATES } from '../../utils/constants';
 import { MagnifyingGlassIcon, XMarkIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
@@ -8,9 +8,10 @@ interface CheckInFiltersProps {
   filters: Filters;
   onFiltersChange: (filters: Filters) => void;
   kiosks: Kiosk[];
+  hubs?: Hub[];
 }
 
-export function CheckInFilters({ filters, onFiltersChange, kiosks = [] }: CheckInFiltersProps) {
+export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [] }: CheckInFiltersProps) {
   const [localFilters, setLocalFilters] = useState<Filters>(filters);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -38,6 +39,11 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [] }: CheckI
   const kioskOptions = (kiosks || []).map(kiosk => ({
     value: kiosk.id,
     label: `${kiosk.name} - ${PRODUCT_TYPES[kiosk.productType] || kiosk.productType} (${kiosk.id})`
+  }));
+
+  const hubOptions = (hubs || []).map(hub => ({
+    value: hub.id,
+    label: `${hub.name} (${hub.states.join(', ')})`
   }));
 
   // Get unique cities from kiosks - con verificación
@@ -158,7 +164,16 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [] }: CheckI
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Hub */}
+            <Select
+              label="🏢 Hub"
+              placeholder="Todos los hubs"
+              value={localFilters.hubId || ''}
+              onChange={(e) => handleFilterChange('hubId', e.target.value)}
+              options={hubOptions}
+            />
+
             {/* Kiosco - usando el formato de tu Select original */}
             <Select
               label="🏪 Kiosco específico"
@@ -252,6 +267,11 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [] }: CheckI
             {localFilters.dateRange?.start && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                 📅 {formatDateForInput(localFilters.dateRange.start)} - {formatDateForInput(localFilters.dateRange.end)}
+              </span>
+            )}
+            {localFilters.hubId && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                🏢 {hubs.find(h => h.id === localFilters.hubId)?.name}
               </span>
             )}
             {localFilters.kioskId && (
