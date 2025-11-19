@@ -174,15 +174,7 @@ export class SlackWebhookTester {
       // Detectar error de CORS (el más común en navegadores)
       if (error instanceof TypeError) {
         if (error.message.includes('fetch') || error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
-          errorMessage = '🚫 Bloqueado por el navegador (CORS)\n\n' +
-            'Los webhooks de Slack no pueden probarse directamente desde el navegador por políticas de seguridad. ' +
-            'Sin embargo, tu webhook funcionará correctamente cuando se envíen notificaciones reales desde el sistema.\n\n' +
-            '✅ Para verificar tu webhook:\n' +
-            '1. Copia la URL del webhook\n' +
-            '2. Usa una herramienta como Postman, cURL o la extensión "CORS Unblock" de Chrome\n' +
-            '3. O simplemente guarda la configuración y las notificaciones reales funcionarán\n\n' +
-            '💡 Si necesitas probar ahora, usa este comando en tu terminal:\n' +
-            'curl -X POST -H "Content-Type: application/json" -d \'{"text":"Prueba"}\' ' + webhookUrl
+          errorMessage = 'CORS_BLOCKED' // Marcador especial para el frontend
         } else {
           errorMessage += error.message
         }
@@ -322,8 +314,7 @@ export class SlackWebhookTester {
       // Detectar error de CORS (el más común en navegadores)
       if (error instanceof TypeError) {
         if (error.message.includes('fetch') || error.message.includes('Failed to fetch') || error.message.includes('Network request failed')) {
-          errorMessage = '🚫 Bloqueado por el navegador (CORS)\n\n' +
-            'Los webhooks de Slack no pueden probarse directamente desde el navegador por políticas de seguridad.'
+          errorMessage = 'CORS_BLOCKED' // Marcador especial para el frontend
         } else {
           errorMessage += error.message
         }
