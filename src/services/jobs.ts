@@ -107,9 +107,8 @@ export class JobService {
     try {
       const typeLabels = {
         no_entry: '🚨 Ausencias de Entrada',
-        no_exit: '⏰ Ausencias de Salida', 
-        late_lunch_return: '🍽️ Retrasos de Comida',
-        auto_closed: '🔒 Cierres Automáticos'
+        no_exit: '⏰ Ausencias de Salida',
+        no_lunch_return: '🍽️ Sin Regreso de Comida'
       };
       
       const title = typeLabels[type as keyof typeof typeLabels] || '📊 Issues de Asistencia';
