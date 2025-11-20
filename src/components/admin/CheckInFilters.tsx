@@ -61,11 +61,39 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
   };
 
   const handleDateRangeChange = (type: 'start' | 'end', value: string) => {
-    const date = value ? new Date(value) : undefined;
+    if (!value) {
+      // Si se borra la fecha, eliminar la parte correspondiente
+      setLocalFilters(prev => {
+        const newDateRange = { ...prev.dateRange };
+        delete newDateRange[type];
+
+        // Si ambas fechas fueron eliminadas, eliminar el objeto dateRange completamente
+        if (!newDateRange.start && !newDateRange.end) {
+          const { dateRange, ...rest } = prev;
+          return rest;
+        }
+
+        return { ...prev, dateRange: newDateRange };
+      });
+      return;
+    }
+
+    // Crear fecha con la hora apropiada
+    let date: Date;
+    if (type === 'start') {
+      // Fecha de inicio: 00:00:00
+      date = new Date(value + 'T00:00:00');
+    } else {
+      // Fecha de fin: 23:59:59 para incluir todo el día
+      date = new Date(value + 'T23:59:59');
+    }
+
+    console.log(`📅 Setting ${type} date:`, value, '→', date);
+
     setLocalFilters(prev => ({
       ...prev,
       dateRange: {
-        ...prev.dateRange,
+        ...(prev.dateRange || {}),
         [type]: date
       }
     }));

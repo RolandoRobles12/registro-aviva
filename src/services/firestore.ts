@@ -108,14 +108,30 @@ export class FirestoreService {
     let queryType = 'default';
 
     // Priority-based query selection (only one indexed field at a time)
-    if (filters?.dateRange?.start && filters?.dateRange?.end) {
-      constraints.push(
-        where('timestamp', '>=', Timestamp.fromDate(filters.dateRange.start)),
-        where('timestamp', '<=', Timestamp.fromDate(filters.dateRange.end)),
-        orderBy('timestamp', 'desc')
-      );
+    if (filters?.dateRange?.start || filters?.dateRange?.end) {
+      // Soporte para rangos parciales o completos
+      if (filters.dateRange.start && filters.dateRange.end) {
+        // Rango completo
+        constraints.push(
+          where('timestamp', '>=', Timestamp.fromDate(filters.dateRange.start)),
+          where('timestamp', '<=', Timestamp.fromDate(filters.dateRange.end)),
+          orderBy('timestamp', 'desc')
+        );
+      } else if (filters.dateRange.start) {
+        // Solo fecha inicial - desde esta fecha en adelante
+        constraints.push(
+          where('timestamp', '>=', Timestamp.fromDate(filters.dateRange.start)),
+          orderBy('timestamp', 'desc')
+        );
+      } else if (filters.dateRange.end) {
+        // Solo fecha final - hasta esta fecha
+        constraints.push(
+          where('timestamp', '<=', Timestamp.fromDate(filters.dateRange.end)),
+          orderBy('timestamp', 'desc')
+        );
+      }
       queryType = 'dateRange';
-      
+
     } else if (filters?.kioskId) {
       constraints.push(
         where('kioskId', '==', filters.kioskId),
@@ -240,11 +256,16 @@ export class FirestoreService {
       }
 
       if (filters.hubId) {
+        const beforeHubFilter = filtered.length;
         filtered = filtered.filter(c => {
           const kiosk = kioskMap!.get(c.kioskId);
-          return kiosk?.hubId === filters.hubId;
+          const matches = kiosk?.hubId === filters.hubId;
+          if (!matches && import.meta.env.DEV) {
+            console.log(`🔍 Check-in ${c.id} filtered out - kiosk ${c.kioskId} has hubId: ${kiosk?.hubId}, looking for: ${filters.hubId}`);
+          }
+          return matches;
         });
-        console.log(`🏢 Hub filter (${filters.hubId}): ${filtered.length} remaining`);
+        console.log(`🏢 Hub filter (${filters.hubId}): ${beforeHubFilter} -> ${filtered.length} (${beforeHubFilter - filtered.length} filtered out)`);
       }
     }
 
