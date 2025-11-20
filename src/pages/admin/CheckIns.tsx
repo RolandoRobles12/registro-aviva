@@ -25,14 +25,18 @@ export default function AdminCheckIns() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalLoaded, setTotalLoaded] = useState(0);
 
-  // ✅ Cargar datos iniciales
+  // ✅ Cargar datos iniciales (kiosks y hubs)
   useEffect(() => {
     loadInitialData();
   }, []);
 
-  // ✅ Recargar cuando cambien los filtros
+  // ✅ Recargar cuando cambien los filtros (con debounce implícito)
   useEffect(() => {
-    loadCheckIns(true); // true = reset pagination
+    const timer = setTimeout(() => {
+      loadCheckIns(true); // true = reset pagination
+    }, 100); // Pequeño delay para evitar múltiples llamadas
+
+    return () => clearTimeout(timer);
   }, [filters]);
 
   const loadInitialData = async () => {
@@ -130,7 +134,7 @@ export default function AdminCheckIns() {
     }
   };
 
-  // ✅ Función de exportación mejorada
+  // ✅ Función de exportación corregida - solo retorna los datos sin metadata
   const handleExport = useCallback(() => {
     try {
       if (checkIns.length === 0) {
@@ -140,15 +144,9 @@ export default function AdminCheckIns() {
 
       console.log('📤 Exporting', checkIns.length, 'check-ins');
       const reportData = generateReportData(checkIns, filters);
-      
-      // Agregar metadata del export
-      const metadata = {
-        'Reporte generado': new Date().toLocaleString('es-MX'),
-        'Total de registros': checkIns.length,
-        'Filtros aplicados': Object.keys(filters).filter(key => filters[key as keyof Filters]).join(', ') || 'Ninguno'
-      };
 
-      return [metadata, ...reportData];
+      console.log('✅ Generated', reportData.length, 'rows for export');
+      return reportData;
     } catch (error) {
       console.error('Error preparing export:', error);
       alert('Error preparando los datos para exportar');
