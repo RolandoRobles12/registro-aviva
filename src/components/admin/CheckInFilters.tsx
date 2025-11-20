@@ -54,6 +54,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
   }));
 
   const handleFilterChange = (key: keyof Filters, value: any) => {
+    console.log(`🔧 Filter changed: ${key} = ${value}`);
     setLocalFilters(prev => ({
       ...prev,
       [key]: value || undefined
@@ -100,7 +101,20 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
   };
 
   const applyFilters = () => {
-    console.log('Applying filters:', localFilters);
+    console.log('✅ Applying filters:', JSON.stringify(localFilters, null, 2));
+
+    // Debug específico para hubId
+    if (localFilters.hubId) {
+      console.log(`🏢 Hub filter will be applied: ${localFilters.hubId}`);
+      const selectedHub = hubs.find(h => h.id === localFilters.hubId);
+      if (selectedHub) {
+        console.log(`  - Hub name: ${selectedHub.name}`);
+        console.log(`  - Hub states: ${selectedHub.states.join(', ')}`);
+      } else {
+        console.warn(`⚠️ Hub not found in hubs list!`);
+      }
+    }
+
     onFiltersChange(localFilters);
   };
 

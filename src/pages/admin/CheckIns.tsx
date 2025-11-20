@@ -45,6 +45,20 @@ export default function AdminCheckIns() {
         FirestoreService.getActiveKiosks(),
         HubService.getAllHubs(true) // Solo hubs activos
       ]);
+
+      console.log('📍 Loaded kiosks:', kiosksList.length);
+      console.log('🏢 Loaded hubs:', hubsList.length);
+
+      // Debug: Mostrar kiosks y sus hubIds
+      const kiosksWithHub = kiosksList.filter(k => k.hubId);
+      const kiosksWithoutHub = kiosksList.filter(k => !k.hubId);
+      console.log(`  - Kiosks con Hub asignado: ${kiosksWithHub.length}`);
+      console.log(`  - Kiosks sin Hub: ${kiosksWithoutHub.length}`);
+
+      if (kiosksWithHub.length > 0) {
+        console.log('  - Ejemplo de kiosk con hub:', kiosksWithHub[0].id, '→ hubId:', kiosksWithHub[0].hubId);
+      }
+
       setKiosks(kiosksList);
       setHubs(hubsList);
     } catch (error) {

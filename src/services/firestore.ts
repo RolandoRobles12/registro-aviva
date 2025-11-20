@@ -256,16 +256,48 @@ export class FirestoreService {
       }
 
       if (filters.hubId) {
+        console.log(`🏢 Applying Hub filter: ${filters.hubId}`);
+        console.log(`  - Total kiosks in map: ${kioskMap!.size}`);
+
+        // Debug: Mostrar hubIds únicos en los kiosks
+        const hubIds = new Set<string>();
+        kioskMap!.forEach(kiosk => {
+          if (kiosk.hubId) hubIds.add(kiosk.hubId);
+        });
+        console.log(`  - Unique hubIds found in kiosks:`, Array.from(hubIds));
+
+        // Contar cuántos kiosks tienen el hubId buscado
+        const kiosksWithTargetHub = Array.from(kioskMap!.values()).filter(k => k.hubId === filters.hubId);
+        console.log(`  - Kiosks with target hubId '${filters.hubId}': ${kiosksWithTargetHub.length}`);
+        if (kiosksWithTargetHub.length > 0) {
+          console.log(`    Examples:`, kiosksWithTargetHub.slice(0, 3).map(k => `${k.id} (${k.name})`));
+        }
+
         const beforeHubFilter = filtered.length;
+        const debugLimit = 5;
+        let debugCount = 0;
+
         filtered = filtered.filter(c => {
           const kiosk = kioskMap!.get(c.kioskId);
           const matches = kiosk?.hubId === filters.hubId;
-          if (!matches && import.meta.env.DEV) {
-            console.log(`🔍 Check-in ${c.id} filtered out - kiosk ${c.kioskId} has hubId: ${kiosk?.hubId}, looking for: ${filters.hubId}`);
+
+          if (import.meta.env.DEV && debugCount < debugLimit) {
+            console.log(`  ${matches ? '✅' : '❌'} Check-in from kiosk ${c.kioskId} (${kiosk?.name || 'unknown'}): hubId=${kiosk?.hubId || 'NONE'}, matches=${matches}`);
+            debugCount++;
           }
+
           return matches;
         });
-        console.log(`🏢 Hub filter (${filters.hubId}): ${beforeHubFilter} -> ${filtered.length} (${beforeHubFilter - filtered.length} filtered out)`);
+
+        console.log(`🏢 Hub filter result: ${beforeHubFilter} → ${filtered.length} (${beforeHubFilter - filtered.length} filtered out)`);
+
+        if (filtered.length === 0 && beforeHubFilter > 0) {
+          console.warn(`⚠️ WARNING: No check-ins found for hub '${filters.hubId}'`);
+          console.warn(`  Possible issues:`);
+          console.warn(`  1. Kiosks might not have hubId assigned in database`);
+          console.warn(`  2. No check-ins exist from kiosks with this hubId`);
+          console.warn(`  3. Hub ID might be incorrect (check spelling/case)`);
+        }
       }
     }
 
