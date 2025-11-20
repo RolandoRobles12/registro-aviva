@@ -17,17 +17,13 @@ interface AttendanceIssuesTableProps {
 const ISSUE_TYPE_LABELS: Record<AttendanceIssue['type'], string> = {
   no_entry: 'Sin registro de entrada',
   no_exit: 'Sin registro de salida',
-  no_lunch_return: 'Sin regreso de comida',
-  late_lunch_return: 'Regreso tarde de comida',
-  auto_closed: 'Cierre automático'
+  no_lunch_return: 'Sin regreso de comida'
 };
 
 const ISSUE_TYPE_COLORS: Record<AttendanceIssue['type'], string> = {
   no_entry: 'bg-red-100 text-red-800',
   no_exit: 'bg-orange-100 text-orange-800',
-  no_lunch_return: 'bg-yellow-100 text-yellow-800',
-  late_lunch_return: 'bg-amber-100 text-amber-800',
-  auto_closed: 'bg-gray-100 text-gray-800'
+  no_lunch_return: 'bg-yellow-100 text-yellow-800'
 };
 
 export function AttendanceIssuesTable({ issues, onResolve }: AttendanceIssuesTableProps) {

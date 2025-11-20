@@ -154,8 +154,6 @@ export interface AttendanceIssue {
     | 'no_entry'
     | 'no_exit'
     | 'no_lunch_return'
-    | 'late_lunch_return'
-    | 'auto_closed'
   expectedTime: string
   detectedAt: Timestamp
   date: Timestamp

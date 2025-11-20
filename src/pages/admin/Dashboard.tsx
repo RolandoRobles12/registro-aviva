@@ -230,7 +230,6 @@ export default function AdminDashboard() {
                       <strong>{issue.userName}</strong> - {
                         issue.type === 'no_entry' ? 'Sin entrada' :
                         issue.type === 'no_exit' ? 'Sin salida' :
-                        issue.type === 'late_lunch_return' ? 'Retraso de comida' :
                         'Sin regreso de comida'
                       }
                       {issue.minutesLate && ` (${issue.minutesLate} min tarde)`}

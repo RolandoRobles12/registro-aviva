@@ -29,17 +29,20 @@ export class AttendanceService {
     today.setHours(0, 0, 0, 0);
 
     try {
-      // Get all active users with assigned kiosks
+      // Get all active users with assigned kiosks (exclude admins)
       const usersSnapshot = await getDocs(
         query(
-          collection(db, 'users'), 
+          collection(db, 'users'),
           where('status', '==', 'active')
         )
       );
-      
+
       for (const userDoc of usersSnapshot.docs) {
         const user = userDoc.data() as User;
-        
+
+        // Skip admins and super_admins
+        if (user.role === 'admin' || user.role === 'super_admin') continue;
+
         // Skip users without assigned product type
         if (!user.productType) continue;
         
@@ -76,25 +79,43 @@ export class AttendanceService {
         // ✅ USAR REGLAS CONFIGURADAS DINÁMICAMENTE con valores por defecto claros
         const entryGraceMinutes = config.absenceRules?.noEntryAfterMinutes ?? 60;
         const exitGraceMinutes = config.absenceRules?.noExitAfterMinutes ?? 120;
-        const autoCloseMinutes = config.autoCloseRules?.closeAfterMinutes ?? 60;
-        const maxLunchMinutes = config.lunchRules?.maxDurationMinutes ?? 90;
-        const markAsAbsent = config.autoCloseRules?.markAsAbsent ?? true;
         
         // Check for missing entry usando configuración dinámica
         const [entryHours, entryMinutes] = schedule.schedule.entryTime.split(':').map(Number);
         const expectedEntry = new Date(today);
         expectedEntry.setHours(entryHours, entryMinutes, 0, 0);
         const entryDeadline = new Date(expectedEntry.getTime() + entryGraceMinutes * 60 * 1000);
-        
+
         if (now > entryDeadline && !checkIns.find(c => c.type === 'entrada')) {
           const minutesLate = Math.floor((now.getTime() - entryDeadline.getTime()) / (60 * 1000));
-          
+
+          // Get last check-in to retrieve kiosk information
+          let kioskId = user.assignedKiosk;
+          let kioskName = user.assignedKioskName;
+
+          try {
+            const lastCheckInQuery = query(
+              collection(db, 'checkins'),
+              where('userId', '==', userDoc.id),
+              orderBy('timestamp', 'desc'),
+              limit(1)
+            );
+            const lastCheckInSnapshot = await getDocs(lastCheckInQuery);
+            if (!lastCheckInSnapshot.empty) {
+              const lastCheckIn = lastCheckInSnapshot.docs[0].data() as CheckIn;
+              kioskId = lastCheckIn.kioskId;
+              kioskName = lastCheckIn.kioskName;
+            }
+          } catch (error) {
+            console.warn(`Could not fetch last check-in for user ${userDoc.id}:`, error);
+          }
+
           issues.push({
             id: '',
             userId: userDoc.id,
             userName: user.name,
-            kioskId: user.assignedKiosk,
-            kioskName: user.assignedKioskName,
+            kioskId: kioskId,
+            kioskName: kioskName,
             productType: user.productType,
             type: 'no_entry',
             expectedTime: schedule.schedule.entryTime,
@@ -133,70 +154,6 @@ export class AttendanceService {
             ruleTriggered: `Salida requerida antes de ${exitGraceMinutes} minutos`,
             minutesLate: minutesLate
           });
-        }
-        
-        // ✅ NUEVA: Check for auto-close usando configuración
-        if (markAsAbsent) {
-          const autoCloseDeadline = new Date(expectedExit.getTime() + autoCloseMinutes * 60 * 1000);
-          
-          if (now > autoCloseDeadline && 
-              checkIns.find(c => c.type === 'entrada') && 
-              !checkIns.find(c => c.type === 'salida')) {
-            
-            const minutesOverdue = Math.floor((now.getTime() - autoCloseDeadline.getTime()) / (60 * 1000));
-            
-            issues.push({
-              id: '',
-              userId: userDoc.id,
-              userName: user.name,
-              kioskId: user.assignedKiosk,
-              kioskName: user.assignedKioskName,
-              productType: user.productType,
-              type: 'auto_closed',
-              expectedTime: schedule.schedule.exitTime,
-              detectedAt: Timestamp.now(),
-              date: Timestamp.fromDate(today),
-              resolved: false,
-              ruleTriggered: `Cierre automático después de ${autoCloseMinutes} minutos`,
-              minutesLate: minutesOverdue
-            });
-          }
-        }
-        
-        // ✅ NUEVA: Check for excessive lunch time usando configuración
-        const lunchCheckIn = checkIns.find(c => c.type === 'comida');
-        const lunchReturn = checkIns.find(c => c.type === 'regreso_comida');
-
-        if (lunchCheckIn && !lunchReturn) {
-          const lunchTime = lunchCheckIn.timestamp.toDate();
-
-          // Validar que el check-in de comida sea del mismo día
-          const lunchDay = new Date(lunchTime);
-          lunchDay.setHours(0, 0, 0, 0);
-
-          if (lunchDay.getTime() === today.getTime()) {
-            const maxLunchDeadline = new Date(lunchTime.getTime() + maxLunchMinutes * 60 * 1000);
-
-            if (now > maxLunchDeadline) {
-              const minutesOverdue = Math.floor((now.getTime() - maxLunchDeadline.getTime()) / (60 * 1000));
-            
-              issues.push({
-                id: '',
-                userId: userDoc.id,
-                userName: user.name,
-                kioskId: user.assignedKiosk,
-                kioskName: user.assignedKioskName,
-                productType: user.productType,
-                type: 'late_lunch_return',
-                expectedTime: `${maxLunchDeadline.getHours().toString().padStart(2, '0')}:${maxLunchDeadline.getMinutes().toString().padStart(2, '0')}`,
-                detectedAt: Timestamp.now(),
-                date: Timestamp.fromDate(today),
-                resolved: false,
-                ruleTriggered: `Regreso de comida requerido antes de ${maxLunchMinutes} minutos`,
-                minutesLate: minutesOverdue
-              });
-            }
-          }
         }
       }
 
@@ -263,43 +220,6 @@ export class AttendanceService {
     }
   }
 
-  /**
-   * ✅ NUEVO: Aplicar cierre automático
-   */
-  static async applyAutoClose(userId: string, expectedExitTime: string): Promise<void> {
-    try {
-      const config = await FirestoreService.getSystemConfig('global');
-      
-      if (config?.autoCloseRules?.markAsAbsent) {
-        // Crear un check-in automático de salida
-        const user = await FirestoreService.getDocument<User>('users', userId);
-        if (!user) return;
-        
-        await addDoc(collection(db, 'checkins'), {
-          userId,
-          userName: user.name,
-          type: 'salida',
-          timestamp: serverTimestamp(),
-          status: 'auto_closed',
-          notes: 'Cierre automático aplicado por reglas del sistema',
-          isAutoGenerated: true,
-          validationResults: {
-            locationValid: false,
-            distanceFromKiosk: 0,
-            isOnTime: false,
-            minutesLate: 0,
-            minutesEarly: 0,
-            status: 'auto_closed'
-          },
-          createdAt: serverTimestamp()
-        });
-        
-        console.log(`✅ Cierre automático aplicado para usuario: ${userId}`);
-      }
-    } catch (error) {
-      console.error('Error applying auto-close:', error);
-    }
-  }
 
   /**
    * Get attendance issues
@@ -688,8 +608,7 @@ export class AttendanceService {
         label: {
           no_entry: 'Ausencias de Entrada',
           no_exit: 'Ausencias de Salida',
-          late_lunch_return: 'Retrasos de Comida',
-          auto_closed: 'Cierres Automáticos'
+          no_lunch_return: 'Sin Regreso de Comida'
         }[ruleType] || ruleType
       }));
       
