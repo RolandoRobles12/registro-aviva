@@ -95,28 +95,72 @@ export class HubService {
    */
   static async getAllHubs(activeOnly: boolean = false): Promise<Hub[]> {
     try {
-      let q;
+      let hubs: Hub[];
 
       if (activeOnly) {
-        q = query(
-          collection(db, this.COLLECTION),
-          where('status', '==', 'active'),
-          orderBy('name', 'asc')
-        );
+        // Intentar query con índice primero
+        try {
+          const q = query(
+            collection(db, this.COLLECTION),
+            where('status', '==', 'active'),
+            orderBy('name', 'asc')
+          );
+          const querySnapshot = await getDocs(q);
+          hubs = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as Hub));
+        } catch (indexError: any) {
+          // Si falla por índice, usar fallback sin orderBy
+          if (indexError?.message?.includes('index')) {
+            console.warn('⚠️ Index not available, using fallback query for hubs');
+            const q = query(
+              collection(db, this.COLLECTION),
+              where('status', '==', 'active')
+            );
+            const querySnapshot = await getDocs(q);
+            hubs = querySnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as Hub));
+            // Ordenar en memoria
+            hubs.sort((a, b) => a.name.localeCompare(b.name));
+          } else {
+            throw indexError;
+          }
+        }
       } else {
-        q = query(
-          collection(db, this.COLLECTION),
-          orderBy('name', 'asc')
-        );
+        // Sin filtro, solo ordenar
+        try {
+          const q = query(
+            collection(db, this.COLLECTION),
+            orderBy('name', 'asc')
+          );
+          const querySnapshot = await getDocs(q);
+          hubs = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as Hub));
+        } catch (indexError: any) {
+          // Fallback simple
+          if (indexError?.message?.includes('index')) {
+            console.warn('⚠️ Index not available, using simple query for hubs');
+            const querySnapshot = await getDocs(collection(db, this.COLLECTION));
+            hubs = querySnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as Hub));
+            hubs.sort((a, b) => a.name.localeCompare(b.name));
+          } else {
+            throw indexError;
+          }
+        }
       }
 
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Hub));
+      console.log(`✅ Loaded ${hubs.length} hubs (activeOnly: ${activeOnly})`);
+      return hubs;
     } catch (error) {
-      console.error('Error getting hubs:', error);
+      console.error('❌ Error getting hubs:', error);
       return [];
     }
   }
