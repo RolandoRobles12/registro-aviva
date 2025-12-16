@@ -7,7 +7,7 @@ import { CheckInForm } from '../../components/forms/CheckInForm';
 import { LocationStatus } from '../../components/common/LocationStatus';
 import { TodayCheckIns } from '../../components/common/TodayCheckIns';
 import { Alert, LoadingSpinner } from '../../components/ui';
-import { CheckIn, Kiosk } from '../../types';
+import { CheckIn, Kiosk, OCRResult } from '../../types';
 
 export default function CheckInPage() {
   const { user } = useAuth();
@@ -47,7 +47,8 @@ export default function CheckInPage() {
   const handleCheckInSubmit = async (
     formData: any,
     location: { latitude: number; longitude: number; accuracy?: number },
-    photo?: File
+    photo?: File,
+    ocrResults?: OCRResult
   ) => {
     if (!user) return;
 
@@ -55,7 +56,7 @@ export default function CheckInPage() {
       // Create check-in first
       const checkInId = await submitCheckIn(async () => {
         let photoUrl: string | undefined;
-        
+
         // Upload photo if provided
         if (photo) {
           photoUrl = await StorageService.uploadCheckInPhoto(
@@ -69,7 +70,8 @@ export default function CheckInPage() {
           user.id,
           formData,
           location,
-          photoUrl
+          photoUrl,
+          ocrResults
         );
       });
 

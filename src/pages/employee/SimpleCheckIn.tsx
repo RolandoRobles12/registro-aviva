@@ -8,7 +8,8 @@ import { Button, Input, Select, Alert } from '../../components/ui';
 import { Toast, useToast } from '../../components/ui/Toast'; // ✅ TOAST SYSTEM
 import { MapPinIcon, CameraIcon, ClockIcon, CalendarDaysIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { PRODUCT_TYPES, CHECK_IN_TYPES, TIME_OFF_TYPES } from '../../utils/constants';
-import { CheckInFormData, TimeOffFormData, Kiosk } from '../../types';
+import { CheckInFormData, TimeOffFormData, Kiosk, OCRResult } from '../../types';
+import { processClockPhoto } from '../../services/ocrService';
 
 export default function SimpleCheckIn() {
   const { user } = useAuth();
@@ -26,6 +27,10 @@ export default function SimpleCheckIn() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // ❌ REMOVIDO: success state - ahora usamos Toast
+
+  // OCR states
+  const [ocrResults, setOcrResults] = useState<OCRResult | null>(null);
+  const [processingOCR, setProcessingOCR] = useState(false);
   
   // States for Time Off Request
   const [showTimeOffModal, setShowTimeOffModal] = useState(false);
@@ -227,25 +232,49 @@ export default function SimpleCheckIn() {
       }
       
       // Convertir a blob con buena calidad
-      canvas.toBlob((blob) => {
+      canvas.toBlob(async (blob) => {
         if (blob) {
-          const file = new File([blob], `photo_${Date.now()}.jpg`, { 
-            type: 'image/jpeg' 
+          const file = new File([blob], `photo_${Date.now()}.jpg`, {
+            type: 'image/jpeg'
           });
           const url = canvas.toDataURL('image/jpeg', 0.8);
-          
+
           setPhoto(url);
           setPhotoFile(file);
           stopCameraPreview(); // Detener preview después de capturar
           setError(null);
           setCameraError(null);
-          
+
           console.log('Foto capturada exitosamente:', {
             size: file.size,
             type: file.type,
             name: file.name,
             dimensions: `${canvas.width}x${canvas.height}`
           });
+
+          // Procesar OCR automáticamente
+          setProcessingOCR(true);
+          setOcrResults(null);
+
+          try {
+            console.log('Procesando OCR...');
+            const results = await processClockPhoto(file);
+            console.log('Resultados OCR:', results);
+            setOcrResults(results);
+          } catch (ocrError) {
+            console.error('Error procesando OCR:', ocrError);
+            setOcrResults({
+              extractedText: '',
+              clockTime: null,
+              confidence: 0,
+              serverTime: new Date().toISOString(),
+              timeDifference: null,
+              processingTime: 0,
+              error: 'Error al procesar la imagen'
+            });
+          } finally {
+            setProcessingOCR(false);
+          }
         } else {
           setError('Error generando la imagen');
         }
@@ -278,6 +307,7 @@ export default function SimpleCheckIn() {
     if (photo) {
       setPhoto(null);
       setPhotoFile(null);
+      setOcrResults(null);
       setCameraError(null);
       setError(null);
     }
@@ -345,7 +375,8 @@ export default function SimpleCheckIn() {
           longitude: location!.longitude,
           accuracy: location!.accuracy
         },
-        photoUrl
+        photoUrl,
+        ocrResults || undefined
       );
 
       // ✅ USAR TOAST EN LUGAR DE setState
@@ -752,7 +783,65 @@ export default function SimpleCheckIn() {
                     <XMarkIcon className="h-4 w-4" />
                   </button>
                 </div>
-                
+
+                {/* OCR Results */}
+                {processingOCR && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                      <p className="text-sm text-blue-700">Procesando OCR...</p>
+                    </div>
+                  </div>
+                )}
+
+                {ocrResults && !processingOCR && (
+                  <div className={`border rounded-lg p-3 ${
+                    ocrResults.error
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-green-50 border-green-200'
+                  }`}>
+                    <h4 className={`text-sm font-semibold mb-2 ${
+                      ocrResults.error ? 'text-red-900' : 'text-green-900'
+                    }`}>
+                      🔍 Resultados del OCR
+                    </h4>
+
+                    {ocrResults.error ? (
+                      <p className="text-sm text-red-700">{ocrResults.error}</p>
+                    ) : (
+                      <div className="space-y-1 text-sm">
+                        {ocrResults.clockTime ? (
+                          <>
+                            <div className="flex justify-between items-center">
+                              <span className="text-green-700">⏰ Hora del reloj:</span>
+                              <span className="text-green-900 font-bold">{ocrResults.clockTime}</span>
+                            </div>
+                            {ocrResults.timeDifference !== null && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-green-700">📊 Diferencia:</span>
+                                <span className="text-green-900">
+                                  {Math.abs(ocrResults.timeDifference)} min
+                                  {ocrResults.timeDifference > 0 ? ' adelantado' : ' atrasado'}
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-center">
+                              <span className="text-green-700">✅ Confianza:</span>
+                              <span className="text-green-900">
+                                {Math.round(ocrResults.confidence * 100)}%
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-yellow-700">
+                            ⚠️ No se pudo detectar la hora en la imagen
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Opciones para la foto capturada */}
                 <div className="flex space-x-2">
                   <button

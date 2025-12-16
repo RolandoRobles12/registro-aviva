@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CheckIn } from '../../types';
 import { StatusBadge, ImageViewer } from '../common';
+import { OCRResults } from '../common/OCRResults';
 import { Button, LoadingSpinner } from '../ui';
 import { formatTimestamp, formatDistance } from '../../utils/formatters';
 import { CHECK_IN_TYPES, PRODUCT_TYPES } from '../../utils/constants';
@@ -60,6 +61,9 @@ export function CheckInTable({ checkIns, loading, hasNext, onLoadMore }: CheckIn
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Evidencia
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                OCR Reloj
               </th>
             </tr>
           </thead>
@@ -135,6 +139,14 @@ export function CheckInTable({ checkIns, loading, hasNext, onLoadMore }: CheckIn
                     </button>
                   ) : (
                     <span className="text-sm text-gray-400">Sin foto</span>
+                  )}
+                </td>
+
+                <td className="px-6 py-4">
+                  {checkIn.ocrResults ? (
+                    <OCRResults ocrResults={checkIn.ocrResults} variant="compact" />
+                  ) : (
+                    <span className="text-sm text-gray-400">N/A</span>
                   )}
                 </td>
               </tr>

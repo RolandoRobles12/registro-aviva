@@ -23,18 +23,19 @@ import {
   runTransaction
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { 
-  CheckIn, 
-  CheckInFormData, 
-  TimeOffRequest, 
-  TimeOffFormData, 
-  Kiosk, 
-  User, 
+import {
+  CheckIn,
+  CheckInFormData,
+  TimeOffRequest,
+  TimeOffFormData,
+  Kiosk,
+  User,
   CheckInFilters,
   TimeOffFilters,
   PaginatedResponse,
   SystemConfig,
-  Holiday
+  Holiday,
+  OCRResult
 } from '../types';
 import { ScheduleService } from './schedules';
 
@@ -481,7 +482,8 @@ export class FirestoreService {
     userId: string,
     formData: CheckInFormData,
     location: { latitude: number; longitude: number; accuracy?: number },
-    photoUrl?: string
+    photoUrl?: string,
+    ocrResults?: OCRResult
   ): Promise<string> {
     try {
       console.log('Creating check-in for user:', userId);
@@ -526,6 +528,7 @@ export class FirestoreService {
           notes: formData.notes ?? "",
           status: validationResults.status || this.determineCheckInStatus(validationResults),
           validationResults,
+          ...(ocrResults && { ocrResults }),
           createdAt: serverTimestamp()
         };
 
