@@ -55,7 +55,7 @@ export default function CheckInPage() {
       // Create check-in first
       const checkInId = await submitCheckIn(async () => {
         let photoUrl: string | undefined;
-        
+
         // Upload photo if provided
         if (photo) {
           photoUrl = await StorageService.uploadCheckInPhoto(

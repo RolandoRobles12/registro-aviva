@@ -21,11 +21,11 @@ interface CheckInFormProps {
 
 export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = false }: CheckInFormProps) {
   console.log('CheckInForm renderizado con', kiosks.length, 'kioscos');
-  
+
   const [selectedKiosk, setSelectedKiosk] = useState<Kiosk | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<CameraCaptureType | null>(null);
   const [showCamera, setShowCamera] = useState(false);
-  
+
   const { getCurrentLocation, permission, error: locationError } = useGeolocation();
 
   const {
@@ -90,7 +90,7 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
     setSelectedKiosk(kiosk || null);
   };
 
-  const handlePhotoCapture = (capture: CameraCaptureType) => {
+  const handlePhotoCapture = async (capture: CameraCaptureType) => {
     console.log('Foto capturada:', capture.file.name, capture.file.size);
     setCapturedPhoto(capture);
     setShowCamera(false);
@@ -257,6 +257,7 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
                 ✕
               </button>
             </div>
+
             <div className="flex justify-center">
               <Button
                 type="button"

@@ -23,13 +23,13 @@ import {
   runTransaction
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { 
-  CheckIn, 
-  CheckInFormData, 
-  TimeOffRequest, 
-  TimeOffFormData, 
-  Kiosk, 
-  User, 
+import {
+  CheckIn,
+  CheckInFormData,
+  TimeOffRequest,
+  TimeOffFormData,
+  Kiosk,
+  User,
   CheckInFilters,
   TimeOffFilters,
   PaginatedResponse,

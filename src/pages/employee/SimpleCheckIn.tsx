@@ -26,7 +26,7 @@ export default function SimpleCheckIn() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // ❌ REMOVIDO: success state - ahora usamos Toast
-  
+
   // States for Time Off Request
   const [showTimeOffModal, setShowTimeOffModal] = useState(false);
   const [timeOffType, setTimeOffType] = useState('');
@@ -227,19 +227,19 @@ export default function SimpleCheckIn() {
       }
       
       // Convertir a blob con buena calidad
-      canvas.toBlob((blob) => {
+      canvas.toBlob(async (blob) => {
         if (blob) {
-          const file = new File([blob], `photo_${Date.now()}.jpg`, { 
-            type: 'image/jpeg' 
+          const file = new File([blob], `photo_${Date.now()}.jpg`, {
+            type: 'image/jpeg'
           });
           const url = canvas.toDataURL('image/jpeg', 0.8);
-          
+
           setPhoto(url);
           setPhotoFile(file);
           stopCameraPreview(); // Detener preview después de capturar
           setError(null);
           setCameraError(null);
-          
+
           console.log('Foto capturada exitosamente:', {
             size: file.size,
             type: file.type,
@@ -752,7 +752,7 @@ export default function SimpleCheckIn() {
                     <XMarkIcon className="h-4 w-4" />
                   </button>
                 </div>
-                
+
                 {/* Opciones para la foto capturada */}
                 <div className="flex space-x-2">
                   <button

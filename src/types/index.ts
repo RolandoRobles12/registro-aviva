@@ -95,7 +95,50 @@ export interface CheckIn {
     minutesEarly: number
     status: CheckInStatus
   }
+  photoValidation?: PhotoValidationResult // NUEVO: Resultados de validación de foto con Vision API
   createdAt: Timestamp
+}
+
+// ================= PHOTO VALIDATION TYPES =================
+export type PhotoValidationStatus =
+  | 'pending'           // Pendiente de validación
+  | 'auto_approved'     // Aprobada automáticamente por IA
+  | 'approved'          // Aprobada manualmente por supervisor
+  | 'rejected'          // Rechazada (manual o automática)
+  | 'needs_review'      // Requiere revisión manual
+
+export interface PhotoValidationResult {
+  status: PhotoValidationStatus
+  confidence: number              // Confianza general (0-1)
+  personDetected: boolean         // ¿Hay persona en la foto?
+  personConfidence: number        // Confianza de detección de persona
+  uniformDetected: boolean        // ¿Detectó uniforme/ropa apropiada?
+  uniformConfidence: number       // Confianza de detección de uniforme
+  logoDetected: boolean           // ¿Detectó logo de la empresa?
+  logoConfidence: number          // Confianza de detección de logo
+  locationValid: boolean          // ¿Parece ambiente de tienda/trabajo?
+  locationConfidence: number      // Confianza de ambiente
+  isRealPhoto: boolean            // ¿Es foto real vs screenshot?
+  labels: Array<{                 // Etiquetas detectadas por Vision API
+    description: string
+    score: number
+  }>
+  logos: Array<{                  // Logos detectados
+    description: string
+    score: number
+  }>
+  colors: Array<{                 // Colores dominantes
+    red: number
+    green: number
+    blue: number
+    score: number
+  }>
+  rejectionReason?: string        // Razón de rechazo si aplica
+  reviewedBy?: string             // ID del supervisor que revisó
+  reviewedAt?: Timestamp          // Cuándo fue revisado
+  reviewNotes?: string            // Notas del supervisor
+  processingTime: number          // Tiempo de procesamiento en ms
+  error?: string                  // Error si falló la validación
 }
 
 export interface CheckInFormData {

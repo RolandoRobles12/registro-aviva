@@ -1,0 +1,9 @@
+node_modules/
+lib/
+*.log
+
+# Service Account Credentials - NUNCA SUBIR AL REPOSITORIO
+serviceAccountKey.json
+*-serviceAccountKey.json
+credentials.json
+*-credentials.json

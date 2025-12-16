@@ -36,6 +36,11 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
+# Firebase Functions
+functions/node_modules/
+functions/lib/
+functions/.eslintrc.json
+
 # OS generated files
 Thumbs.db
 
