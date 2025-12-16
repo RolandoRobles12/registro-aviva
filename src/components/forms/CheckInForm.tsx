@@ -6,16 +6,14 @@ import { CameraCapture } from '../common/CameraCapture';
 import { LocationPermissions } from '../common/LocationPermissions';
 import { checkInSchema } from '../../utils/validators';
 import { CHECK_IN_TYPES, PRODUCT_TYPES } from '../../utils/constants';
-import { CheckInFormData, Kiosk, CameraCapture as CameraCaptureType, OCRResult } from '../../types';
-import { processClockPhoto } from '../../services/ocrService';
+import { CheckInFormData, Kiosk, CameraCapture as CameraCaptureType } from '../../types';
 
 interface CheckInFormProps {
   kiosks: Kiosk[];
   onSubmit: (
     data: CheckInFormData,
     location: { latitude: number; longitude: number; accuracy?: number },
-    photo?: File,
-    ocrResults?: OCRResult
+    photo?: File
   ) => Promise<void>;
   loading?: boolean;
   disabled?: boolean;
@@ -27,8 +25,6 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
   const [selectedKiosk, setSelectedKiosk] = useState<Kiosk | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<CameraCaptureType | null>(null);
   const [showCamera, setShowCamera] = useState(false);
-  const [ocrResults, setOcrResults] = useState<OCRResult | null>(null);
-  const [processingOCR, setProcessingOCR] = useState(false);
 
   const { getCurrentLocation, permission, error: locationError } = useGeolocation();
 
@@ -98,36 +94,11 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
     console.log('Foto capturada:', capture.file.name, capture.file.size);
     setCapturedPhoto(capture);
     setShowCamera(false);
-
-    // Procesar OCR automáticamente
-    setProcessingOCR(true);
-    setOcrResults(null);
-
-    try {
-      console.log('Procesando OCR...');
-      const results = await processClockPhoto(capture.file);
-      console.log('Resultados OCR:', results);
-      setOcrResults(results);
-    } catch (error) {
-      console.error('Error procesando OCR:', error);
-      setOcrResults({
-        extractedText: '',
-        clockTime: null,
-        confidence: 0,
-        serverTime: new Date().toISOString(),
-        timeDifference: null,
-        processingTime: 0,
-        error: 'Error al procesar la imagen'
-      });
-    } finally {
-      setProcessingOCR(false);
-    }
   };
 
   const handleRemovePhoto = () => {
     console.log('Foto removida');
     setCapturedPhoto(null);
-    setOcrResults(null);
   };
 
   const handleOpenCamera = () => {
@@ -154,14 +125,12 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
           longitude: location.longitude,
           accuracy: location.accuracy
         },
-        capturedPhoto.file,
-        ocrResults || undefined
+        capturedPhoto.file
       );
 
       // Reset form on success
       reset();
       setCapturedPhoto(null);
-      setOcrResults(null);
       setSelectedKiosk(null);
       setSelectedProductType('');
     } catch (error: any) {
@@ -288,79 +257,6 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
                 ✕
               </button>
             </div>
-
-            {/* OCR Results */}
-            {processingOCR && (
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                <div className="flex items-center space-x-2">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                  <p className="text-sm text-blue-700">
-                    Procesando imagen con OCR...
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {ocrResults && !processingOCR && (
-              <div className={`border rounded-md p-4 ${
-                ocrResults.error
-                  ? 'bg-red-50 border-red-200'
-                  : 'bg-green-50 border-green-200'
-              }`}>
-                <h4 className={`text-sm font-medium mb-2 ${
-                  ocrResults.error ? 'text-red-900' : 'text-green-900'
-                }`}>
-                  🔍 Resultados del OCR
-                </h4>
-
-                {ocrResults.error ? (
-                  <p className="text-sm text-red-700">
-                    {ocrResults.error}
-                  </p>
-                ) : (
-                  <div className="space-y-2 text-sm">
-                    {ocrResults.clockTime ? (
-                      <>
-                        <div className="flex justify-between">
-                          <span className="text-green-700 font-medium">⏰ Hora del reloj:</span>
-                          <span className="text-green-900 font-bold">{ocrResults.clockTime}</span>
-                        </div>
-                        {ocrResults.timeDifference !== null && (
-                          <div className="flex justify-between">
-                            <span className="text-green-700 font-medium">📊 Diferencia:</span>
-                            <span className="text-green-900">
-                              {Math.abs(ocrResults.timeDifference)} min
-                              {ocrResults.timeDifference > 0 ? ' adelantado' : ' atrasado'}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex justify-between">
-                          <span className="text-green-700 font-medium">✅ Confianza:</span>
-                          <span className="text-green-900">
-                            {Math.round(ocrResults.confidence * 100)}%
-                          </span>
-                        </div>
-                      </>
-                    ) : (
-                      <p className="text-yellow-700">
-                        ⚠️ No se pudo detectar la hora en la imagen
-                      </p>
-                    )}
-
-                    {ocrResults.extractedText && (
-                      <details className="mt-2">
-                        <summary className="text-green-700 font-medium cursor-pointer">
-                          📝 Texto extraído
-                        </summary>
-                        <p className="text-green-900 text-xs mt-1 p-2 bg-white rounded border border-green-300 whitespace-pre-wrap">
-                          {ocrResults.extractedText}
-                        </p>
-                      </details>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="flex justify-center">
               <Button

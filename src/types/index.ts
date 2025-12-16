@@ -95,20 +95,8 @@ export interface CheckIn {
     minutesEarly: number
     status: CheckInStatus
   }
-  ocrResults?: OCRResult // NUEVO: Resultados del OCR del reloj checador
   photoValidation?: PhotoValidationResult // NUEVO: Resultados de validación de foto con Vision API
   createdAt: Timestamp
-}
-
-// ================= OCR TYPES =================
-export interface OCRResult {
-  extractedText: string        // Texto completo extraído por OCR
-  clockTime: string | null     // Hora detectada en formato HH:MM
-  confidence: number           // Confianza del OCR (0-1)
-  serverTime: string           // Hora del servidor cuando se procesó
-  timeDifference: number | null // Diferencia en minutos (positivo = reloj adelantado)
-  processingTime: number       // Tiempo de procesamiento en ms
-  error?: string               // Mensaje de error si falló el OCR
 }
 
 // ================= PHOTO VALIDATION TYPES =================
