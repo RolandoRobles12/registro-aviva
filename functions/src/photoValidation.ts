@@ -26,24 +26,29 @@ interface PhotoValidationResult {
 
 // Configuración de validación
 const VALIDATION_CONFIG = {
-  // Umbrales de confianza
-  MIN_PERSON_CONFIDENCE: 0.7,
-  MIN_UNIFORM_CONFIDENCE: 0.6,
-  MIN_LOGO_CONFIDENCE: 0.5,
-  MIN_LOCATION_CONFIDENCE: 0.6,
-  AUTO_APPROVE_THRESHOLD: 0.85,
-  AUTO_REJECT_THRESHOLD: 0.3,
+  // Umbrales de confianza (ajustados para fotos reales con accesorios)
+  MIN_PERSON_CONFIDENCE: 0.6,      // Más bajo porque pueden tener cubrebocas/lentes
+  MIN_UNIFORM_CONFIDENCE: 0.4,     // Más bajo porque pueden tener sudadera encima
+  MIN_GREEN_COLOR_SCORE: 0.15,     // Score mínimo para color verde dominante
+  AUTO_APPROVE_THRESHOLD: 0.7,     // Más bajo para aprobar automáticamente
+  AUTO_REJECT_THRESHOLD: 0.25,     // Más bajo para rechazar
 
   // Etiquetas esperadas para validación
-  PERSON_LABELS: ['Person', 'People', 'Human', 'Man', 'Woman', 'Adult'],
-  UNIFORM_LABELS: ['Clothing', 'Uniform', 'Shirt', 'Polo shirt', 'T-shirt'],
-  LOCATION_LABELS: ['Retail', 'Store', 'Shop', 'Product', 'Shelf', 'Supermarket', 'Market', 'Building', 'Indoor'],
+  PERSON_LABELS: ['Person', 'People', 'Human', 'Man', 'Woman', 'Adult', 'Face', 'Portrait', 'Selfie'],
+  UNIFORM_LABELS: ['Clothing', 'Uniform', 'Shirt', 'Polo shirt', 'T-shirt', 'Sleeve', 'Top', 'Outerwear', 'Jacket', 'Hoodie'],
 
-  // Etiquetas que indican que NO es foto real
-  FAKE_PHOTO_LABELS: ['Screenshot', 'Display', 'Screen', 'Monitor', 'Computer', 'Phone', 'Photograph'],
+  // Ubicación es opcional (puede ser tienda o kiosco mismo)
+  LOCATION_LABELS: ['Retail', 'Store', 'Shop', 'Product', 'Shelf', 'Supermarket', 'Market', 'Building', 'Indoor', 'Room', 'Wall'],
 
-  // Logos esperados (personalizar según empresa)
+  // Logos esperados (OPCIONAL - no crítico porque puede estar cubierto)
   EXPECTED_LOGOS: ['Aviva', 'BA', 'Construrama', 'Disensa'],
+
+  // Color verde esperado (RGB aproximado del uniforme Aviva)
+  EXPECTED_GREEN_RANGE: {
+    red: { min: 0, max: 150 },
+    green: { min: 150, max: 255 },
+    blue: { min: 0, max: 150 }
+  }
 };
 
 /**
@@ -107,18 +112,17 @@ export async function validateCheckInPhoto(file: File): Promise<PhotoValidationR
       VALIDATION_CONFIG.LOCATION_LABELS
     );
 
-    // Validar logo
+    // Validar logo (OPCIONAL)
     const { detected: logoDetected, confidence: logoConfidence } = detectFromLogos(
       logos,
       VALIDATION_CONFIG.EXPECTED_LOGOS
     );
 
-    // Detectar si es foto real (no screenshot)
-    const { detected: isFakePhoto } = detectFromLabels(
-      labels,
-      VALIDATION_CONFIG.FAKE_PHOTO_LABELS
-    );
-    const isRealPhoto = !isFakePhoto;
+    // Validar color verde (IMPORTANTE para uniforme Aviva)
+    const greenColorScore = detectGreenColor(colors);
+    const hasGreenColor = greenColorScore >= VALIDATION_CONFIG.MIN_GREEN_COLOR_SCORE;
+
+    console.log('Color verde detectado:', greenColorScore.toFixed(2));
 
     // Calcular confianza general
     const confidence = calculateOverallConfidence({
@@ -126,7 +130,7 @@ export async function validateCheckInPhoto(file: File): Promise<PhotoValidationR
       uniformConfidence,
       logoConfidence,
       locationConfidence,
-      isRealPhoto,
+      greenColorScore,
     });
 
     // Determinar estado y razón de rechazo
@@ -135,11 +139,10 @@ export async function validateCheckInPhoto(file: File): Promise<PhotoValidationR
       personConfidence,
       uniformDetected,
       uniformConfidence,
-      logoDetected,
-      logoConfidence,
+      hasGreenColor,
+      greenColorScore,
       locationDetected,
       locationConfidence,
-      isRealPhoto,
       confidence,
     });
 
@@ -156,7 +159,7 @@ export async function validateCheckInPhoto(file: File): Promise<PhotoValidationR
       logoConfidence,
       locationValid: locationDetected,
       locationConfidence,
-      isRealPhoto,
+      isRealPhoto: true, // Siempre true porque la foto es captura obligatoria
       labels,
       logos,
       colors,
@@ -169,9 +172,9 @@ export async function validateCheckInPhoto(file: File): Promise<PhotoValidationR
       confidence: confidence.toFixed(2),
       personDetected,
       uniformDetected,
-      logoDetected,
+      hasGreenColor,
+      greenColorScore: greenColorScore.toFixed(2),
       locationDetected,
-      isRealPhoto,
     });
 
     return validationResult;
@@ -248,6 +251,35 @@ function detectFromLogos(
 }
 
 /**
+ * Detecta color verde en los colores dominantes de la imagen
+ * (uniforme Aviva es verde brillante)
+ */
+function detectGreenColor(
+  colors: Array<{ red: number; green: number; blue: number; score: number }>
+): number {
+  const { EXPECTED_GREEN_RANGE } = VALIDATION_CONFIG;
+  let maxGreenScore = 0;
+
+  for (const color of colors) {
+    // Verificar si el color está en el rango verde esperado
+    const isInGreenRange =
+      color.red >= EXPECTED_GREEN_RANGE.red.min &&
+      color.red <= EXPECTED_GREEN_RANGE.red.max &&
+      color.green >= EXPECTED_GREEN_RANGE.green.min &&
+      color.green <= EXPECTED_GREEN_RANGE.green.max &&
+      color.blue >= EXPECTED_GREEN_RANGE.blue.min &&
+      color.blue <= EXPECTED_GREEN_RANGE.blue.max;
+
+    if (isInGreenRange) {
+      // El score del color representa qué tan dominante es en la imagen
+      maxGreenScore = Math.max(maxGreenScore, color.score);
+    }
+  }
+
+  return maxGreenScore;
+}
+
+/**
  * Calcula confianza general de la validación
  */
 function calculateOverallConfidence(params: {
@@ -255,23 +287,23 @@ function calculateOverallConfidence(params: {
   uniformConfidence: number;
   logoConfidence: number;
   locationConfidence: number;
-  isRealPhoto: boolean;
+  greenColorScore: number;
 }): number {
-  // Pesos para cada factor
+  // Pesos ajustados para fotos reales de Aviva
   const weights = {
-    person: 0.3,
-    uniform: 0.25,
-    logo: 0.2,
-    location: 0.15,
-    realPhoto: 0.1,
+    person: 0.4,        // MÁS IMPORTANTE: debe haber persona
+    greenColor: 0.3,    // COLOR VERDE es crítico para uniforme Aviva
+    uniform: 0.15,      // Ropa detectada (menos peso porque puede estar cubierta)
+    location: 0.1,      // Ambiente (opcional, puede ser kiosco)
+    logo: 0.05,         // Logo (opcional, puede no ser visible)
   };
 
   const confidence =
     params.personConfidence * weights.person +
+    params.greenColorScore * weights.greenColor +
     params.uniformConfidence * weights.uniform +
-    params.logoConfidence * weights.logo +
     params.locationConfidence * weights.location +
-    (params.isRealPhoto ? 1.0 : 0.0) * weights.realPhoto;
+    params.logoConfidence * weights.logo;
 
   return confidence;
 }
@@ -284,47 +316,39 @@ function determineValidationStatus(params: {
   personConfidence: number;
   uniformDetected: boolean;
   uniformConfidence: number;
-  logoDetected: boolean;
-  logoConfidence: number;
+  hasGreenColor: boolean;
+  greenColorScore: number;
   locationDetected: boolean;
   locationConfidence: number;
-  isRealPhoto: boolean;
   confidence: number;
 }): { status: 'auto_approved' | 'rejected' | 'needs_review'; rejectionReason?: string } {
-  // Rechazar automáticamente si no es foto real
-  if (!params.isRealPhoto) {
-    return {
-      status: 'rejected',
-      rejectionReason: 'La foto parece ser un screenshot o foto de pantalla. Se requiere foto en tiempo real.',
-    };
-  }
-
-  // Rechazar si no hay persona
+  // Rechazar si no hay persona (criterio MÁS importante)
   if (!params.personDetected || params.personConfidence < VALIDATION_CONFIG.MIN_PERSON_CONFIDENCE) {
     return {
       status: 'rejected',
-      rejectionReason: 'No se detectó una persona en la foto. Asegúrate de estar visible en la imagen.',
+      rejectionReason: 'No se detectó una persona claramente en la foto. Asegúrate de estar visible y de frente.',
     };
   }
 
-  // Aprobar automáticamente si cumple todos los criterios con alta confianza
+  // Aprobar automáticamente si cumple criterios con buena confianza
   if (params.confidence >= VALIDATION_CONFIG.AUTO_APPROVE_THRESHOLD) {
     return { status: 'auto_approved' };
   }
 
   // Rechazar automáticamente si la confianza es muy baja
+  // (no hay persona clara NI color verde NI uniforme)
   if (params.confidence <= VALIDATION_CONFIG.AUTO_REJECT_THRESHOLD) {
     const reasons = [];
-    if (!params.uniformDetected) reasons.push('uniforme');
-    if (!params.logoDetected) reasons.push('logo de la empresa');
-    if (!params.locationDetected) reasons.push('ambiente de trabajo');
+    if (!params.hasGreenColor) reasons.push('uniforme verde');
+    if (!params.uniformDetected) reasons.push('ropa de trabajo visible');
 
     return {
       status: 'rejected',
-      rejectionReason: `La foto no cumple con los requisitos. Falta: ${reasons.join(', ')}.`,
+      rejectionReason: `La foto no cumple con los requisitos. No se detectó: ${reasons.join(' ni ')}.`,
     };
   }
 
   // Caso intermedio: requiere revisión manual
+  // (hay persona pero no se ve claro el uniforme/color)
   return { status: 'needs_review' };
 }
