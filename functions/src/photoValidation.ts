@@ -1,7 +1,28 @@
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { File } from '@google-cloud/storage';
+import * as path from 'path';
+import * as fs from 'fs';
 
-const visionClient = new ImageAnnotatorClient();
+// Configurar Vision API con credenciales
+let visionClient: ImageAnnotatorClient;
+
+try {
+  // Intentar cargar credenciales desde archivo local (desarrollo/testing)
+  const credentialsPath = path.join(__dirname, '../serviceAccountKey.json');
+
+  if (fs.existsSync(credentialsPath)) {
+    console.log('Usando credenciales desde serviceAccountKey.json');
+    const credentials = require(credentialsPath);
+    visionClient = new ImageAnnotatorClient({ credentials });
+  } else {
+    // Fallback: usar credenciales por defecto (ADC - Application Default Credentials)
+    console.log('Usando Application Default Credentials de Google Cloud');
+    visionClient = new ImageAnnotatorClient();
+  }
+} catch (error) {
+  console.warn('Error cargando credenciales personalizadas, usando ADC:', error);
+  visionClient = new ImageAnnotatorClient();
+}
 
 // Interfaz para resultados de validación
 interface PhotoValidationResult {
@@ -30,8 +51,8 @@ const VALIDATION_CONFIG = {
   MIN_PERSON_CONFIDENCE: 0.6,      // Más bajo porque pueden tener cubrebocas/lentes
   MIN_UNIFORM_CONFIDENCE: 0.4,     // Más bajo porque pueden tener sudadera encima
   MIN_GREEN_COLOR_SCORE: 0.15,     // Score mínimo para color verde dominante
-  AUTO_APPROVE_THRESHOLD: 0.7,     // Más bajo para aprobar automáticamente
-  AUTO_REJECT_THRESHOLD: 0.25,     // Más bajo para rechazar
+  AUTO_APPROVE_THRESHOLD: 0.7,     // 70% para aprobar automáticamente
+  AUTO_REJECT_THRESHOLD: 0.5,      // 50% o menos se rechaza automáticamente
 
   // Etiquetas esperadas para validación
   PERSON_LABELS: ['Person', 'People', 'Human', 'Man', 'Woman', 'Adult', 'Face', 'Portrait', 'Selfie'],
