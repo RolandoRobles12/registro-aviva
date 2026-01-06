@@ -599,6 +599,24 @@ export class FirestoreService {
   }
 
   /**
+   * Update an existing check-in
+   */
+  static async updateCheckIn(
+    checkInId: string,
+    updates: Partial<CheckIn>
+  ): Promise<void> {
+    try {
+      console.log('Updating check-in:', checkInId, updates);
+      const checkInRef = doc(db, 'checkins', checkInId);
+      await updateDoc(checkInRef, updates);
+      console.log('Check-in updated successfully');
+    } catch (error) {
+      console.error('Error updating check-in:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get user's check-ins for today with caching
    */
   static async getTodayCheckIns(userId: string): Promise<CheckIn[]> {

@@ -29,13 +29,6 @@ export const validatePhotoOnUpload = functions
     try {
       console.log('Procesando validación de foto:', filePath);
 
-      // Obtener URL pública temporal
-      const bucket = admin.storage().bucket(object.bucket);
-      const file = bucket.file(filePath);
-
-      // Validar foto con Google Vision API
-      const validationResult = await validateCheckInPhoto(file);
-
       // Extraer checkInId del path
       // attendance-photos/2025/12/userId/checkinId_timestamp.jpg
       const fileName = filePath.split('/').pop();
@@ -45,6 +38,34 @@ export const validatePhotoOnUpload = functions
         console.error('No se pudo extraer checkInId del path:', filePath);
         return null;
       }
+
+      // Obtener el documento de check-in para verificar el tipo
+      const checkInDoc = await admin.firestore().collection('checkins').doc(checkInId).get();
+
+      if (!checkInDoc.exists) {
+        console.error('Documento de check-in no encontrado:', checkInId);
+        return null;
+      }
+
+      const checkInData = checkInDoc.data();
+
+      // SOLO validar fotos de tipo "entrada"
+      if (checkInData?.type !== 'entrada') {
+        console.log('Check-in no es de tipo entrada, omitiendo validación:', {
+          checkInId,
+          type: checkInData?.type
+        });
+        return null;
+      }
+
+      console.log('Check-in es de tipo entrada, procediendo con validación');
+
+      // Obtener archivo de Storage
+      const bucket = admin.storage().bucket(object.bucket);
+      const file = bucket.file(filePath);
+
+      // Validar foto con Google Vision API
+      const validationResult = await validateCheckInPhoto(file);
 
       // Actualizar documento de check-in con resultados de validación
       await admin.firestore().collection('checkins').doc(checkInId).update({
