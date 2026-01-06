@@ -9,7 +9,13 @@ admin.initializeApp();
  * Cloud Function: Valida foto de check-in con Google Vision API
  * Se ejecuta cuando se sube una foto a Firebase Storage
  */
-export const validatePhotoOnUpload = functions.storage
+export const validatePhotoOnUpload = functions
+  .runWith({
+    timeoutSeconds: 540,
+    memory: '1GB'
+  })
+  .storage
+  .bucket('registro-aviva.firebasestorage.app')
   .object()
   .onFinalize(async (object) => {
     const filePath = object.name;
