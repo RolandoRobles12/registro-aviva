@@ -321,34 +321,34 @@ export default function SimpleCheckIn() {
       setSubmitting(true);
       setError(null);
 
+      // Generate check-in ID first
+      const checkInId = FirestoreService.generateCheckInId();
+
+      // Upload photo with the generated ID
+      const photoUrl = await StorageService.uploadCheckInPhoto(
+        user.id,
+        photoFile!,
+        checkInId
+      );
+
+      // Create check-in with the photo URL
       const formData: CheckInFormData = {
         kioskId: selectedKiosk,
         type: checkInType as any,
         notes: notes || undefined
       };
 
-      // Create check-in first to get the ID
-      const checkInId = await FirestoreService.createCheckIn(
+      await FirestoreService.createCheckIn(
         user.id,
         formData,
         {
           latitude: location!.latitude,
           longitude: location!.longitude,
           accuracy: location!.accuracy
-        }
+        },
+        photoUrl,
+        checkInId
       );
-
-      // Upload photo with the real check-in ID
-      if (photoFile && checkInId) {
-        const photoUrl = await StorageService.uploadCheckInPhoto(
-          user.id,
-          photoFile,
-          checkInId
-        );
-
-        // Update check-in with photo URL
-        await FirestoreService.updateCheckIn(checkInId, { photoUrl });
-      }
 
       // ✅ USAR TOAST EN LUGAR DE setState
       showSuccess(
