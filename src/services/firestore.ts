@@ -475,13 +475,23 @@ export class FirestoreService {
   }
 
   /**
+   * Generate a new check-in ID without creating the document yet
+   * This allows uploading the photo with the correct ID before creating the check-in
+   */
+  static generateCheckInId(): string {
+    const docRef = doc(collection(db, 'checkins'));
+    return docRef.id;
+  }
+
+  /**
    * Create a new check-in with transaction safety
    */
   static async createCheckIn(
     userId: string,
     formData: CheckInFormData,
     location: { latitude: number; longitude: number; accuracy?: number },
-    photoUrl?: string
+    photoUrl: string,
+    checkInId?: string
   ): Promise<string> {
     try {
       console.log('Creating check-in for user:', userId);
@@ -530,7 +540,10 @@ export class FirestoreService {
         };
 
         // Create check-in document
-        const docRef = doc(collection(db, 'checkins'));
+        // Use provided checkInId if available, otherwise generate new one
+        const docRef = checkInId
+          ? doc(db, 'checkins', checkInId)
+          : doc(collection(db, 'checkins'));
         transaction.set(docRef, checkInData);
 
         return docRef.id;

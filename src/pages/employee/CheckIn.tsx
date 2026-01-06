@@ -52,26 +52,31 @@ export default function CheckInPage() {
     if (!user) return;
 
     try {
-      // Create check-in first to get the ID
-      const checkInId = await submitCheckIn(async () => {
-        return await FirestoreService.createCheckIn(
-          user.id,
-          formData,
-          location
-        );
-      });
+      // Generate check-in ID, upload photo, then create check-in
+      await submitCheckIn(async () => {
+        if (!photo) {
+          throw new Error('Photo is required');
+        }
 
-      // Upload photo with the real check-in ID
-      if (photo && checkInId) {
+        // Generate ID first
+        const checkInId = FirestoreService.generateCheckInId();
+
+        // Upload photo with generated ID
         const photoUrl = await StorageService.uploadCheckInPhoto(
           user.id,
           photo,
           checkInId
         );
 
-        // Update check-in with photo URL
-        await FirestoreService.updateCheckIn(checkInId, { photoUrl });
-      }
+        // Create check-in with photo URL
+        return await FirestoreService.createCheckIn(
+          user.id,
+          formData,
+          location,
+          photoUrl,
+          checkInId
+        );
+      });
 
       // Reload today's check-ins
       const updatedCheckIns = await FirestoreService.getTodayCheckIns(user.id);
