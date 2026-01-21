@@ -281,8 +281,9 @@ export async function generateAttendanceReport(filters: ReportFilters): Promise<
       const onTimeCheckIns = userCheckIns.filter(ci => ci.status === 'a_tiempo').length;
       const lateCheckIns = userCheckIns.filter(ci => ci.status === 'retrasado').length;
 
+      // Only sum minutes late from check-ins that are actually late (status === 'retrasado')
       const totalLateMinutes = userCheckIns
-        .filter(ci => ci.validationResults?.minutesLate)
+        .filter(ci => ci.status === 'retrasado' && ci.validationResults?.minutesLate)
         .reduce((sum, ci) => sum + (ci.validationResults?.minutesLate || 0), 0);
 
       const checkInsByType = {
@@ -302,8 +303,21 @@ export async function generateAttendanceReport(filters: ReportFilters): Promise<
         })
       ).size;
 
-      // Calculate expected days (business days in range)
-      const expectedDays = calculateBusinessDays(filters.startDate, filters.endDate);
+      // Calculate expected days only in the range where user has check-ins
+      let expectedDays = 0;
+      if (userCheckIns.length > 0) {
+        const userDates = userCheckIns.map(ci => {
+          const date = ci.timestamp instanceof Timestamp ? ci.timestamp.toDate() : new Date(ci.timestamp);
+          return date;
+        });
+        const userStartDate = new Date(Math.min(...userDates.map(d => d.getTime())));
+        const userEndDate = new Date(Math.max(...userDates.map(d => d.getTime())));
+        expectedDays = calculateBusinessDays(userStartDate, userEndDate);
+      }
+
+      // Cap attendance rate at 100%
+      const rawAttendanceRate = expectedDays > 0 ? (attendanceDays / expectedDays) * 100 : 0;
+      const attendanceRate = Math.min(rawAttendanceRate, 100);
 
       reportData.push({
         userId: user.id,
@@ -316,7 +330,7 @@ export async function generateAttendanceReport(filters: ReportFilters): Promise<
         punctualityRate: userCheckIns.length > 0 ? (onTimeCheckIns / userCheckIns.length) * 100 : 0,
         attendanceDays,
         expectedDays,
-        attendanceRate: expectedDays > 0 ? (attendanceDays / expectedDays) * 100 : 0,
+        attendanceRate,
         checkInsByType,
       });
     }
@@ -362,7 +376,7 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
         const comida = dayCheckIns.find(ci => ci.type === 'comida');
         const regresoComida = dayCheckIns.find(ci => ci.type === 'regreso_comida');
 
-        // Calculate work hours
+        // Calculate work hours - only if salida is AFTER entrada
         if (entrada && salida) {
           const entradaTime = entrada.timestamp instanceof Timestamp
             ? entrada.timestamp.toDate()
@@ -372,10 +386,16 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
             : new Date(salida.timestamp);
 
           const workMinutes = (salidaTime.getTime() - entradaTime.getTime()) / (1000 * 60);
-          totalWorkHours += workMinutes / 60;
+
+          // Only add positive work hours (salida must be after entrada)
+          if (workMinutes > 0) {
+            totalWorkHours += workMinutes / 60;
+          } else {
+            console.warn(`⚠️ Invalid work hours for ${user.name} on ${date}: salida before entrada`);
+          }
         }
 
-        // Calculate lunch time
+        // Calculate lunch time - only if regreso is AFTER comida
         if (comida && regresoComida) {
           const comidaTime = comida.timestamp instanceof Timestamp
             ? comida.timestamp.toDate()
@@ -385,7 +405,13 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
             : new Date(regresoComida.timestamp);
 
           const lunchMinutes = (regresoTime.getTime() - comidaTime.getTime()) / (1000 * 60);
-          totalLunchMinutes += lunchMinutes;
+
+          // Only add positive lunch minutes
+          if (lunchMinutes > 0) {
+            totalLunchMinutes += lunchMinutes;
+          } else {
+            console.warn(`⚠️ Invalid lunch time for ${user.name} on ${date}: regreso before comida`);
+          }
         }
 
         // Count issues
@@ -560,7 +586,11 @@ export async function generateMonthlyReport(filters: ReportFilters): Promise<Mon
             : new Date(salida.timestamp);
 
           const workMinutes = (salidaTime.getTime() - entradaTime.getTime()) / (1000 * 60);
-          totalWorkHours += workMinutes / 60;
+
+          // Only add positive work hours
+          if (workMinutes > 0) {
+            totalWorkHours += workMinutes / 60;
+          }
         }
       }
     }
@@ -573,9 +603,10 @@ export async function generateMonthlyReport(filters: ReportFilters): Promise<Mon
 
     const expectedDays = calculateBusinessDays(filters.startDate, filters.endDate);
     const totalExpectedCheckIns = activeUsers.length * expectedDays;
-    const averageAttendanceRate = totalExpectedCheckIns > 0
+    const rawAttendanceRate = totalExpectedCheckIns > 0
       ? (checkIns.length / totalExpectedCheckIns) * 100
       : 0;
+    const averageAttendanceRate = Math.min(rawAttendanceRate, 100);
 
     const totalAbsences = totalExpectedCheckIns - checkIns.length;
     const totalLateArrivals = checkIns.filter(ci =>
