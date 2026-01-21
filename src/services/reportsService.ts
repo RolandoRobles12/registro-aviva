@@ -123,6 +123,10 @@ export async function getFilteredCheckIns(filters: ReportFilters): Promise<Check
       } as CheckIn;
     });
 
+    // Log all unique product types in database
+    const allProductTypes = [...new Set(checkIns.map(ci => ci.productType))];
+    console.log('📦 ALL product types in database:', allProductTypes);
+
     // Apply ALL filters in memory (no indexes needed!)
     console.log('🔍 Applying date filter...');
     checkIns = checkIns.filter(ci => {
@@ -164,8 +168,20 @@ export async function getFilteredCheckIns(filters: ReportFilters): Promise<Check
     }
 
     if (filters.productTypes && filters.productTypes.length > 0) {
+      console.log('🔍 Filtering by product types:', filters.productTypes);
+
+      // Log unique product types in current check-ins before filtering
+      const uniqueProducts = [...new Set(checkIns.map(ci => ci.productType))];
+      console.log('📦 Product types found in check-ins before filter:', uniqueProducts);
+
       checkIns = checkIns.filter(ci => filters.productTypes!.includes(ci.productType));
       console.log(`🔍 After product type filter: ${checkIns.length} check-ins`);
+
+      if (checkIns.length === 0) {
+        console.warn('⚠️ NO check-ins match the selected product types!');
+        console.warn('Selected:', filters.productTypes);
+        console.warn('Available:', uniqueProducts);
+      }
     }
 
     if (filters.checkInType) {
