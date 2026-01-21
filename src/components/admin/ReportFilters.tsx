@@ -16,6 +16,7 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters 
   const [users, setUsers] = useState<User[]>([]);
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [hubs, setHubs] = useState<Hub[]>([]);
+  const [supervisors, setSupervisors] = useState<User[]>([]);
 
   // Filter state
   const [startDate, setStartDate] = useState<string>(
@@ -30,6 +31,7 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters 
   const [selectedKioskIds, setSelectedKioskIds] = useState<string[]>(initialFilters?.kioskIds || []);
   const [selectedHubIds, setSelectedHubIds] = useState<string[]>(initialFilters?.hubIds || []);
   const [selectedProductTypes, setSelectedProductTypes] = useState<string[]>(initialFilters?.productTypes || []);
+  const [selectedSupervisorIds, setSelectedSupervisorIds] = useState<string[]>(initialFilters?.supervisorIds || []);
   const [selectedCheckInType, setSelectedCheckInType] = useState<string>(initialFilters?.checkInType || '');
   const [selectedStatus, setSelectedStatus] = useState<string>(initialFilters?.status || '');
 
@@ -46,7 +48,9 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters 
         getAllHubs()
       ]);
 
-      setUsers(usersData.filter(u => u.status === 'active'));
+      const allUsers = usersData;
+      setUsers(allUsers.filter(u => u.status === 'active'));
+      setSupervisors(allUsers.filter(u => u.role === 'supervisor' || u.role === 'admin' || u.role === 'super_admin'));
       setKiosks(kiosksData);
       setHubs(hubsData);
     } catch (error) {
@@ -57,15 +61,17 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters 
   const handleApplyFilters = () => {
     const filters: ReportFilters = {
       startDate: new Date(startDate),
-      endDate: new Date(endDate),
+      endDate: new Date(endDate + 'T23:59:59'), // Include full end date
       userIds: selectedUserIds.length > 0 ? selectedUserIds : undefined,
       kioskIds: selectedKioskIds.length > 0 ? selectedKioskIds : undefined,
       hubIds: selectedHubIds.length > 0 ? selectedHubIds : undefined,
       productTypes: selectedProductTypes.length > 0 ? selectedProductTypes : undefined,
+      supervisorIds: selectedSupervisorIds.length > 0 ? selectedSupervisorIds : undefined,
       checkInType: selectedCheckInType as any || undefined,
       status: selectedStatus as any || undefined,
     };
 
+    console.log('🔍 Applying filters:', filters);
     onFilterChange(filters);
   };
 
@@ -77,6 +83,7 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters 
     setSelectedKioskIds([]);
     setSelectedHubIds([]);
     setSelectedProductTypes([]);
+    setSelectedSupervisorIds([]);
     setSelectedCheckInType('');
     setSelectedStatus('');
 
@@ -91,6 +98,7 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters 
     selectedKioskIds.length > 0,
     selectedHubIds.length > 0,
     selectedProductTypes.length > 0,
+    selectedSupervisorIds.length > 0,
     selectedCheckInType !== '',
     selectedStatus !== '',
   ].filter(Boolean).length;
@@ -239,6 +247,29 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters 
               {hubs.map(hub => (
                 <option key={hub.id} value={hub.id}>
                   {hub.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Supervisors Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Supervisores ({selectedSupervisorIds.length} seleccionados)
+            </label>
+            <select
+              multiple
+              value={selectedSupervisorIds}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions, option => option.value);
+                setSelectedSupervisorIds(selected);
+              }}
+              className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+              size={3}
+            >
+              {supervisors.map(supervisor => (
+                <option key={supervisor.id} value={supervisor.id}>
+                  {supervisor.name} - {supervisor.role}
                 </option>
               ))}
             </select>

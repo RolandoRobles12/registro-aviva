@@ -24,6 +24,7 @@ export interface ReportFilters {
   kioskIds?: string[];
   hubIds?: string[];
   productTypes?: string[];
+  supervisorIds?: string[];
   checkInType?: 'entrada' | 'comida' | 'regreso_comida' | 'salida';
   status?: 'a_tiempo' | 'retrasado' | 'anticipado' | 'ubicacion_invalida' | 'auto_closed';
 }
@@ -106,38 +107,59 @@ export interface MonthlyReportData {
  */
 export async function getFilteredCheckIns(filters: ReportFilters): Promise<CheckIn[]> {
   try {
-    let q = query(
+    console.log('🔍 Fetching check-ins with filters:', filters);
+
+    // Simple query with only timestamp - no compound indexes needed
+    const q = query(
       collection(db, 'checkIns'),
       where('timestamp', '>=', Timestamp.fromDate(filters.startDate)),
-      where('timestamp', '<=', Timestamp.fromDate(filters.endDate))
+      where('timestamp', '<=', Timestamp.fromDate(filters.endDate)),
+      orderBy('timestamp', 'desc')
     );
 
     const snapshot = await getDocs(q);
-    let checkIns = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as CheckIn));
+    console.log(`📊 Found ${snapshot.docs.length} check-ins in date range`);
 
-    // Apply additional filters
+    let checkIns = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        // Ensure timestamp is a Timestamp
+        timestamp: data.timestamp instanceof Timestamp ? data.timestamp : Timestamp.fromDate(new Date(data.timestamp))
+      } as CheckIn;
+    });
+
+    // Apply filters in memory (no index needed)
     if (filters.userIds && filters.userIds.length > 0) {
       checkIns = checkIns.filter(ci => filters.userIds!.includes(ci.userId));
+      console.log(`🔍 After user filter: ${checkIns.length} check-ins`);
     }
 
     if (filters.kioskIds && filters.kioskIds.length > 0) {
       checkIns = checkIns.filter(ci => filters.kioskIds!.includes(ci.kioskId));
+      console.log(`🔍 After kiosk filter: ${checkIns.length} check-ins`);
+    }
+
+    if (filters.productTypes && filters.productTypes.length > 0) {
+      checkIns = checkIns.filter(ci => filters.productTypes!.includes(ci.productType));
+      console.log(`🔍 After product type filter: ${checkIns.length} check-ins`);
     }
 
     if (filters.checkInType) {
       checkIns = checkIns.filter(ci => ci.type === filters.checkInType);
+      console.log(`🔍 After check-in type filter: ${checkIns.length} check-ins`);
     }
 
     if (filters.status) {
       checkIns = checkIns.filter(ci => ci.status === filters.status);
+      console.log(`🔍 After status filter: ${checkIns.length} check-ins`);
     }
 
+    console.log(`✅ Final filtered check-ins: ${checkIns.length}`);
     return checkIns;
   } catch (error) {
-    console.error('Error getting filtered check-ins:', error);
+    console.error('❌ Error getting filtered check-ins:', error);
     throw error;
   }
 }
@@ -195,15 +217,32 @@ export async function getAllHubs(): Promise<Hub[]> {
  */
 export async function generateAttendanceReport(filters: ReportFilters): Promise<AttendanceReportData[]> {
   try {
+    console.log('📊 Generating attendance report...');
     const checkIns = await getFilteredCheckIns(filters);
     const users = await getAllUsers();
 
     const reportData: AttendanceReportData[] = [];
 
-    // Filter users if specified
-    const relevantUsers = filters.userIds && filters.userIds.length > 0
-      ? users.filter(u => filters.userIds!.includes(u.id))
-      : users.filter(u => u.status === 'active');
+    // Filter users based on all criteria
+    let relevantUsers = users.filter(u => u.status === 'active');
+
+    if (filters.userIds && filters.userIds.length > 0) {
+      relevantUsers = relevantUsers.filter(u => filters.userIds!.includes(u.id));
+    }
+
+    if (filters.hubIds && filters.hubIds.length > 0) {
+      relevantUsers = relevantUsers.filter(u => u.hubId && filters.hubIds!.includes(u.hubId));
+    }
+
+    if (filters.supervisorIds && filters.supervisorIds.length > 0) {
+      relevantUsers = relevantUsers.filter(u => u.supervisorId && filters.supervisorIds!.includes(u.supervisorId));
+    }
+
+    if (filters.productTypes && filters.productTypes.length > 0) {
+      relevantUsers = relevantUsers.filter(u => filters.productTypes!.includes(u.productType));
+    }
+
+    console.log(`👥 Processing ${relevantUsers.length} users`);
 
     for (const user of relevantUsers) {
       const userCheckIns = checkIns.filter(ci => ci.userId === user.id);
