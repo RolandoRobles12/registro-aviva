@@ -70,7 +70,6 @@ export interface LocationReportData {
   averageCheckInsPerDay: number;
   invalidLocationCheckIns: number;
   locationAccuracyRate: number;
-  peakHour: string;
 }
 
 export interface TeamReportData {
@@ -496,20 +495,6 @@ export async function generateLocationReport(filters: ReportFilters): Promise<Lo
 
       const averageCheckInsPerDay = uniqueDays > 0 ? kioskCheckIns.length / uniqueDays : 0;
 
-      // Calculate peak hour
-      const hourCounts: { [hour: string]: number } = {};
-      kioskCheckIns.forEach(ci => {
-        const date = ci.timestamp instanceof Timestamp
-          ? ci.timestamp.toDate()
-          : new Date(ci.timestamp);
-        const hour = date.getHours();
-        const hourKey = `${String(hour).padStart(2, '0')}:00`;
-        hourCounts[hourKey] = (hourCounts[hourKey] || 0) + 1;
-      });
-
-      const peakHour = Object.entries(hourCounts)
-        .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
-
       reportData.push({
         kioskId: kiosk.id,
         kioskName: kiosk.name,
@@ -520,7 +505,6 @@ export async function generateLocationReport(filters: ReportFilters): Promise<Lo
         locationAccuracyRate: kioskCheckIns.length > 0
           ? ((kioskCheckIns.length - invalidLocationCheckIns) / kioskCheckIns.length) * 100
           : 0,
-        peakHour,
       });
     }
 
