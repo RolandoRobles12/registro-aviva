@@ -364,6 +364,7 @@ export default function AdminReports() {
         <ReportFiltersComponent
           onFilterChange={handleGenerateReport}
           initialFilters={currentFilters}
+          autoApply={true}
         />
       )}
 
@@ -413,9 +414,27 @@ export default function AdminReports() {
 function AttendanceReportView({ data }: { data: AttendanceReportData[] }) {
   if (data.length === 0) {
     return (
-      <div className="bg-white shadow rounded-lg p-12 text-center">
-        <ClockIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-600">No hay datos de asistencia para el período seleccionado</p>
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-12 text-center border-2 border-dashed border-blue-200">
+        <div className="max-w-md mx-auto">
+          <div className="p-4 bg-white rounded-full inline-block mb-4 shadow-lg">
+            <ClockIcon className="h-16 w-16 text-blue-500" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">
+            Sin Datos de Asistencia
+          </h3>
+          <p className="text-gray-600 mb-6">
+            No se encontraron registros de check-ins para el período seleccionado.
+          </p>
+          <div className="bg-white rounded-lg p-4 shadow-sm">
+            <p className="text-sm font-medium text-gray-700 mb-2">💡 Sugerencias:</p>
+            <ul className="text-sm text-left text-gray-600 space-y-1">
+              <li>• Amplía el rango de fechas</li>
+              <li>• Verifica que hay check-ins registrados</li>
+              <li>• Revisa la consola del navegador (F12) para más detalles</li>
+              <li>• Intenta eliminar algunos filtros avanzados</li>
+            </ul>
+          </div>
+        </div>
       </div>
     );
   }
@@ -508,9 +527,26 @@ function AttendanceReportView({ data }: { data: AttendanceReportData[] }) {
 function ProductivityReportView({ data }: { data: ProductivityReportData[] }) {
   if (data.length === 0) {
     return (
-      <div className="bg-white shadow rounded-lg p-12 text-center">
-        <ChartBarIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-600">No hay datos de productividad para el período seleccionado</p>
+      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-12 text-center border-2 border-dashed border-green-200">
+        <div className="max-w-md mx-auto">
+          <div className="p-4 bg-white rounded-full inline-block mb-4 shadow-lg">
+            <ChartBarIcon className="h-16 w-16 text-green-500" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">
+            Sin Datos de Productividad
+          </h3>
+          <p className="text-gray-600 mb-6">
+            No se encontraron registros para calcular productividad en el período seleccionado.
+          </p>
+          <div className="bg-white rounded-lg p-4 shadow-sm">
+            <p className="text-sm font-medium text-gray-700 mb-2">💡 Intenta:</p>
+            <ul className="text-sm text-left text-gray-600 space-y-1">
+              <li>• Amplía el rango de fechas</li>
+              <li>• Verifica los filtros aplicados</li>
+              <li>• Asegúrate que hay check-ins de entrada y salida</li>
+            </ul>
+          </div>
+        </div>
       </div>
     );
   }

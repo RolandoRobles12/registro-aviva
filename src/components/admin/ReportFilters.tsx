@@ -3,15 +3,16 @@ import React, { useState, useEffect } from 'react';
 import { User, Kiosk, Hub } from '../../types';
 import { ReportFilters } from '../../services/reportsService';
 import { getAllUsers, getAllKiosks, getAllHubs } from '../../services/reportsService';
-import { FunnelIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { FunnelIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { Button } from '../ui/Button';
 
 interface ReportFiltersProps {
   onFilterChange: (filters: ReportFilters) => void;
   initialFilters?: Partial<ReportFilters>;
+  autoApply?: boolean;
 }
 
-export default function ReportFiltersComponent({ onFilterChange, initialFilters }: ReportFiltersProps) {
+export default function ReportFiltersComponent({ onFilterChange, initialFilters, autoApply = false }: ReportFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
@@ -39,6 +40,13 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters 
   useEffect(() => {
     loadOptions();
   }, []);
+
+  // Auto-apply on mount
+  useEffect(() => {
+    if (autoApply) {
+      handleApplyFilters();
+    }
+  }, [autoApply]);
 
   const loadOptions = async () => {
     try {
@@ -103,277 +111,334 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters 
     selectedStatus !== '',
   ].filter(Boolean).length;
 
-  const productTypes = ['BA', 'Aviva_Contigo', 'Casa_Marchand', 'Otro'];
+  const productTypes = [
+    { value: 'BA', label: 'BA', color: 'blue' },
+    { value: 'Aviva_Contigo', label: 'Aviva Contigo', color: 'purple' },
+    { value: 'Casa_Marchand', label: 'Casa Marchand', color: 'green' },
+    { value: 'Otro', label: 'Otro', color: 'gray' }
+  ];
+
+  const checkInTypes = [
+    { value: 'entrada', label: 'Entrada', icon: '🚪' },
+    { value: 'comida', label: 'Comida', icon: '🍽️' },
+    { value: 'regreso_comida', label: 'Regreso Comida', icon: '↩️' },
+    { value: 'salida', label: 'Salida', icon: '🏃' }
+  ];
+
+  const statusOptions = [
+    { value: 'a_tiempo', label: 'A Tiempo', color: 'green' },
+    { value: 'retrasado', label: 'Retrasado', color: 'red' },
+    { value: 'anticipado', label: 'Anticipado', color: 'yellow' },
+    { value: 'ubicacion_invalida', label: 'Ubicación Inválida', color: 'orange' }
+  ];
+
+  const toggleProductType = (type: string) => {
+    if (selectedProductTypes.includes(type)) {
+      setSelectedProductTypes(selectedProductTypes.filter(t => t !== type));
+    } else {
+      setSelectedProductTypes([...selectedProductTypes, type]);
+    }
+  };
+
+  const toggleHub = (hubId: string) => {
+    if (selectedHubIds.includes(hubId)) {
+      setSelectedHubIds(selectedHubIds.filter(id => id !== hubId));
+    } else {
+      setSelectedHubIds([...selectedHubIds, hubId]);
+    }
+  };
+
+  const toggleKiosk = (kioskId: string) => {
+    if (selectedKioskIds.includes(kioskId)) {
+      setSelectedKioskIds(selectedKioskIds.filter(id => id !== kioskId));
+    } else {
+      setSelectedKioskIds([...selectedKioskIds, kioskId]);
+    }
+  };
 
   return (
-    <div className="bg-white shadow rounded-lg p-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <FunnelIcon className="h-5 w-5 text-gray-500" />
-          <h3 className="text-lg font-medium text-gray-900">Filtros</h3>
+    <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <FunnelIcon className="h-6 w-6 text-blue-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Filtros de Reporte</h3>
+            <p className="text-sm text-gray-500">Personaliza tu análisis de datos</p>
+          </div>
           {activeFiltersCount > 0 && (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-              {activeFiltersCount} activos
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800">
+              {activeFiltersCount} filtros activos
             </span>
           )}
         </div>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+          className="flex items-center space-x-2 text-sm font-medium text-blue-600 hover:text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors"
         >
-          {isExpanded ? 'Ocultar' : 'Mostrar'} filtros
+          <span>{isExpanded ? 'Ocultar filtros' : 'Mostrar más filtros'}</span>
+          {isExpanded ? (
+            <ChevronUpIcon className="h-5 w-5" />
+          ) : (
+            <ChevronDownIcon className="h-5 w-5" />
+          )}
         </button>
       </div>
 
-      {/* Quick Date Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Fecha Inicio
-          </label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-          />
+      {/* Date Range - Always Visible */}
+      <div className="mb-6">
+        <label className="block text-sm font-bold text-gray-700 mb-3">
+          📅 Rango de Fechas
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Desde
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm font-medium"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Hasta
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm font-medium"
+            />
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Fecha Fin
-          </label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-          />
-        </div>
-      </div>
 
-      {/* Quick Date Presets */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <button
-          onClick={() => {
-            const today = new Date();
-            setStartDate(today.toISOString().split('T')[0]);
-            setEndDate(today.toISOString().split('T')[0]);
-          }}
-          className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-        >
-          Hoy
-        </button>
-        <button
-          onClick={() => {
-            const today = new Date();
-            const lastWeek = new Date(today);
-            lastWeek.setDate(today.getDate() - 7);
-            setStartDate(lastWeek.toISOString().split('T')[0]);
-            setEndDate(today.toISOString().split('T')[0]);
-          }}
-          className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-        >
-          Última Semana
-        </button>
-        <button
-          onClick={() => {
-            const today = new Date();
-            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-            setStartDate(firstDay.toISOString().split('T')[0]);
-            setEndDate(today.toISOString().split('T')[0]);
-          }}
-          className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-        >
-          Este Mes
-        </button>
-        <button
-          onClick={() => {
-            const today = new Date();
-            const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-            const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-            setStartDate(lastMonth.toISOString().split('T')[0]);
-            setEndDate(lastDayOfLastMonth.toISOString().split('T')[0]);
-          }}
-          className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-        >
-          Mes Anterior
-        </button>
+        {/* Quick Date Presets */}
+        <div className="flex flex-wrap gap-2 mt-3">
+          <button
+            onClick={() => {
+              const today = new Date();
+              setStartDate(today.toISOString().split('T')[0]);
+              setEndDate(today.toISOString().split('T')[0]);
+            }}
+            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors border border-blue-200"
+          >
+            📅 Hoy
+          </button>
+          <button
+            onClick={() => {
+              const today = new Date();
+              const lastWeek = new Date(today);
+              lastWeek.setDate(today.getDate() - 7);
+              setStartDate(lastWeek.toISOString().split('T')[0]);
+              setEndDate(today.toISOString().split('T')[0]);
+            }}
+            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors border border-blue-200"
+          >
+            📊 Última Semana
+          </button>
+          <button
+            onClick={() => {
+              const today = new Date();
+              const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+              setStartDate(firstDay.toISOString().split('T')[0]);
+              setEndDate(today.toISOString().split('T')[0]);
+            }}
+            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors border border-blue-200"
+          >
+            📆 Este Mes
+          </button>
+          <button
+            onClick={() => {
+              const today = new Date();
+              const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+              const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+              setStartDate(lastMonth.toISOString().split('T')[0]);
+              setEndDate(lastDayOfLastMonth.toISOString().split('T')[0]);
+            }}
+            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors border border-blue-200"
+          >
+            📅 Mes Anterior
+          </button>
+        </div>
       </div>
 
       {/* Advanced Filters */}
       {isExpanded && (
-        <div className="space-y-4 border-t pt-4">
-          {/* Users Filter */}
+        <div className="space-y-6 border-t pt-6">
+          {/* Product Types */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Empleados ({selectedUserIds.length} seleccionados)
+            <label className="block text-sm font-bold text-gray-700 mb-3">
+              🏢 Tipos de Producto {selectedProductTypes.length > 0 && `(${selectedProductTypes.length})`}
             </label>
-            <select
-              multiple
-              value={selectedUserIds}
-              onChange={(e) => {
-                const selected = Array.from(e.target.selectedOptions, option => option.value);
-                setSelectedUserIds(selected);
-              }}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-              size={5}
-            >
-              {users.map(user => (
-                <option key={user.id} value={user.id}>
-                  {user.name} - {user.role}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-gray-500">
-              Mantén presionado Ctrl (Cmd en Mac) para seleccionar múltiples
-            </p>
-          </div>
-
-          {/* Hubs Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Hubs ({selectedHubIds.length} seleccionados)
-            </label>
-            <select
-              multiple
-              value={selectedHubIds}
-              onChange={(e) => {
-                const selected = Array.from(e.target.selectedOptions, option => option.value);
-                setSelectedHubIds(selected);
-              }}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-              size={3}
-            >
-              {hubs.map(hub => (
-                <option key={hub.id} value={hub.id}>
-                  {hub.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Supervisors Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Supervisores ({selectedSupervisorIds.length} seleccionados)
-            </label>
-            <select
-              multiple
-              value={selectedSupervisorIds}
-              onChange={(e) => {
-                const selected = Array.from(e.target.selectedOptions, option => option.value);
-                setSelectedSupervisorIds(selected);
-              }}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-              size={3}
-            >
-              {supervisors.map(supervisor => (
-                <option key={supervisor.id} value={supervisor.id}>
-                  {supervisor.name} - {supervisor.role}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Kiosks Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Kioscos ({selectedKioskIds.length} seleccionados)
-            </label>
-            <select
-              multiple
-              value={selectedKioskIds}
-              onChange={(e) => {
-                const selected = Array.from(e.target.selectedOptions, option => option.value);
-                setSelectedKioskIds(selected);
-              }}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-              size={5}
-            >
-              {kiosks.map(kiosk => (
-                <option key={kiosk.id} value={kiosk.id}>
-                  {kiosk.name} - {kiosk.city}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Product Types Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tipos de Producto ({selectedProductTypes.length} seleccionados)
-            </label>
-            <div className="space-y-2">
-              {productTypes.map(type => (
-                <label key={type} className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={selectedProductTypes.includes(type)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedProductTypes([...selectedProductTypes, type]);
-                      } else {
-                        setSelectedProductTypes(selectedProductTypes.filter(t => t !== type));
-                      }
-                    }}
-                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">{type}</span>
-                </label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {productTypes.map((type) => (
+                <button
+                  key={type.value}
+                  onClick={() => toggleProductType(type.value)}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    selectedProductTypes.includes(type.value)
+                      ? 'border-blue-500 bg-blue-50 shadow-md'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className={`text-lg font-bold ${
+                      selectedProductTypes.includes(type.value) ? 'text-blue-600' : 'text-gray-600'
+                    }`}>
+                      {type.label}
+                    </div>
+                    {selectedProductTypes.includes(type.value) && (
+                      <div className="mt-1 text-xs text-blue-600 font-medium">✓ Seleccionado</div>
+                    )}
+                  </div>
+                </button>
               ))}
             </div>
           </div>
 
-          {/* Check-in Type Filter */}
+          {/* Hubs */}
+          {hubs.length > 0 && (
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-3">
+                🏭 Hubs {selectedHubIds.length > 0 && `(${selectedHubIds.length})`}
+              </label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {hubs.map((hub) => (
+                  <button
+                    key={hub.id}
+                    onClick={() => toggleHub(hub.id)}
+                    className={`p-3 rounded-lg border-2 transition-all text-left ${
+                      selectedHubIds.includes(hub.id)
+                        ? 'border-green-500 bg-green-50 shadow-md'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className={`font-medium text-sm ${
+                      selectedHubIds.includes(hub.id) ? 'text-green-700' : 'text-gray-700'
+                    }`}>
+                      {hub.name}
+                    </div>
+                    {selectedHubIds.includes(hub.id) && (
+                      <div className="mt-1 text-xs text-green-600 font-medium">✓ Seleccionado</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Kiosks/Stores */}
+          {kiosks.length > 0 && (
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-3">
+                🏪 Tiendas/Kioscos {selectedKioskIds.length > 0 && `(${selectedKioskIds.length})`}
+              </label>
+              <div className="max-h-48 overflow-y-auto border-2 border-gray-200 rounded-lg p-3 bg-gray-50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {kiosks.map((kiosk) => (
+                    <label
+                      key={kiosk.id}
+                      className={`flex items-center p-3 rounded-lg cursor-pointer transition-all ${
+                        selectedKioskIds.includes(kiosk.id)
+                          ? 'bg-purple-100 border-2 border-purple-500'
+                          : 'bg-white border-2 border-transparent hover:bg-gray-100'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedKioskIds.includes(kiosk.id)}
+                        onChange={() => toggleKiosk(kiosk.id)}
+                        className="w-5 h-5 text-purple-600 focus:ring-purple-500 rounded"
+                      />
+                      <span className={`ml-3 text-sm font-medium ${
+                        selectedKioskIds.includes(kiosk.id) ? 'text-purple-700' : 'text-gray-700'
+                      }`}>
+                        {kiosk.name} - {kiosk.city}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Check-in Type */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tipo de Check-in
+            <label className="block text-sm font-bold text-gray-700 mb-3">
+              🕐 Tipo de Check-in
             </label>
-            <select
-              value={selectedCheckInType}
-              onChange={(e) => setSelectedCheckInType(e.target.value)}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-            >
-              <option value="">Todos</option>
-              <option value="entrada">Entrada</option>
-              <option value="comida">Comida</option>
-              <option value="regreso_comida">Regreso de Comida</option>
-              <option value="salida">Salida</option>
-            </select>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {checkInTypes.map((type) => (
+                <button
+                  key={type.value}
+                  onClick={() => setSelectedCheckInType(selectedCheckInType === type.value ? '' : type.value)}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    selectedCheckInType === type.value
+                      ? 'border-orange-500 bg-orange-50 shadow-md'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="text-2xl mb-1">{type.icon}</div>
+                    <div className={`text-sm font-medium ${
+                      selectedCheckInType === type.value ? 'text-orange-700' : 'text-gray-700'
+                    }`}>
+                      {type.label}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Status Filter */}
+          {/* Status */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Estado
+            <label className="block text-sm font-bold text-gray-700 mb-3">
+              ⚡ Estado
             </label>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-            >
-              <option value="">Todos</option>
-              <option value="a_tiempo">A Tiempo</option>
-              <option value="retrasado">Retrasado</option>
-              <option value="anticipado">Anticipado</option>
-              <option value="ubicacion_invalida">Ubicación Inválida</option>
-              <option value="auto_closed">Auto Cerrado</option>
-            </select>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {statusOptions.map((status) => (
+                <button
+                  key={status.value}
+                  onClick={() => setSelectedStatus(selectedStatus === status.value ? '' : status.value)}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    selectedStatus === status.value
+                      ? `border-${status.color}-500 bg-${status.color}-50 shadow-md`
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className={`text-sm font-medium text-center ${
+                    selectedStatus === status.value ? `text-${status.color}-700` : 'text-gray-700'
+                  }`}>
+                    {status.label}
+                  </div>
+                  {selectedStatus === status.value && (
+                    <div className={`mt-1 text-xs text-${status.color}-600 font-medium text-center`}>✓</div>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-between mt-4 pt-4 border-t">
+      <div className="flex items-center justify-between mt-6 pt-6 border-t">
         <button
           onClick={handleClearFilters}
-          className="flex items-center text-sm text-gray-600 hover:text-gray-700"
+          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
         >
-          <XMarkIcon className="h-4 w-4 mr-1" />
-          Limpiar Filtros
+          <XMarkIcon className="h-5 w-5" />
+          <span>Limpiar Todo</span>
         </button>
-        <Button onClick={handleApplyFilters}>
-          Aplicar Filtros
+        <Button onClick={handleApplyFilters} size="lg">
+          <FunnelIcon className="h-5 w-5 mr-2" />
+          Generar Reporte
         </Button>
       </div>
     </div>
