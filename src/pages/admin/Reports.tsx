@@ -73,7 +73,7 @@ export default function AdminReports() {
 
   // Filters
   const defaultFilters: ReportFilters = {
-    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    startDate: new Date(new Date().getFullYear(), 0, 1), // Primer día del año
     endDate: new Date(),
   };
   const [currentFilters, setCurrentFilters] = useState<ReportFilters>(defaultFilters);
@@ -364,7 +364,7 @@ export default function AdminReports() {
         <ReportFiltersComponent
           onFilterChange={handleGenerateReport}
           initialFilters={currentFilters}
-          autoApply={true}
+          autoApply={false}
         />
       )}
 

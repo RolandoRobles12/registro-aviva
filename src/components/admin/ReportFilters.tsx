@@ -3,8 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { User, Kiosk, Hub } from '../../types';
 import { ReportFilters } from '../../services/reportsService';
 import { getAllUsers, getAllKiosks, getAllHubs } from '../../services/reportsService';
-import { FunnelIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { FunnelIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import { Button } from '../ui/Button';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 interface ReportFiltersProps {
   onFilterChange: (filters: ReportFilters) => void;
@@ -22,7 +24,7 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
   // Filter state
   const [startDate, setStartDate] = useState<string>(
     initialFilters?.startDate?.toISOString().split('T')[0] ||
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+    new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]
   );
   const [endDate, setEndDate] = useState<string>(
     initialFilters?.endDate?.toISOString().split('T')[0] ||
@@ -84,8 +86,8 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
   };
 
   const handleClearFilters = () => {
-    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    setStartDate(firstDayOfMonth.toISOString().split('T')[0]);
+    const firstDayOfYear = new Date(new Date().getFullYear(), 0, 1);
+    setStartDate(firstDayOfYear.toISOString().split('T')[0]);
     setEndDate(new Date().toISOString().split('T')[0]);
     setSelectedUserIds([]);
     setSelectedKioskIds([]);
@@ -96,9 +98,36 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
     setSelectedStatus('');
 
     onFilterChange({
-      startDate: firstDayOfMonth,
+      startDate: firstDayOfYear,
       endDate: new Date(),
     });
+  };
+
+  const handleDiagnostic = async () => {
+    try {
+      console.log('🔍 Iniciando diagnóstico de base de datos...');
+      const snapshot = await getDocs(collection(db, 'checkIns'));
+      const totalCheckIns = snapshot.docs.length;
+
+      console.log(`📊 DIAGNÓSTICO: Se encontraron ${totalCheckIns} check-ins en total`);
+
+      if (totalCheckIns > 0) {
+        // Mostrar algunas fechas de ejemplo
+        const dates = snapshot.docs.slice(0, 5).map(doc => {
+          const data = doc.data();
+          const timestamp = data.timestamp?.toDate?.() || new Date();
+          return timestamp.toLocaleDateString('es-MX');
+        });
+        console.log('📅 Fechas de ejemplo:', dates);
+
+        alert(`✅ Base de datos OK!\n\nTotal de check-ins: ${totalCheckIns}\n\nEjemplos de fechas:\n${dates.join('\n')}\n\n💡 Si no ves datos, ajusta el rango de fechas para incluir estas fechas.`);
+      } else {
+        alert('❌ No hay check-ins registrados en la base de datos.\n\nPara ver reportes, primero registra algunos check-ins desde /employee/checkin');
+      }
+    } catch (error) {
+      console.error('❌ Error en diagnóstico:', error);
+      alert(`❌ Error al diagnosticar: ${error}\n\nRevisa la consola para más detalles.`);
+    }
   };
 
   const activeFiltersCount = [
@@ -255,14 +284,25 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
           <button
             onClick={() => {
               const today = new Date();
-              const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-              const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-              setStartDate(lastMonth.toISOString().split('T')[0]);
-              setEndDate(lastDayOfLastMonth.toISOString().split('T')[0]);
+              const threeMonthsAgo = new Date(today);
+              threeMonthsAgo.setMonth(today.getMonth() - 3);
+              setStartDate(threeMonthsAgo.toISOString().split('T')[0]);
+              setEndDate(today.toISOString().split('T')[0]);
             }}
-            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors border border-blue-200"
+            className="px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors border border-purple-200"
           >
-            📅 Mes Anterior
+            📈 Últimos 3 Meses
+          </button>
+          <button
+            onClick={() => {
+              const today = new Date();
+              const firstDayOfYear = new Date(today.getFullYear(), 0, 1);
+              setStartDate(firstDayOfYear.toISOString().split('T')[0]);
+              setEndDate(today.toISOString().split('T')[0]);
+            }}
+            className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors border border-green-200"
+          >
+            📊 Todo el Año {new Date().getFullYear()}
           </button>
         </div>
       </div>
@@ -429,13 +469,23 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
 
       {/* Action Buttons */}
       <div className="flex items-center justify-between mt-6 pt-6 border-t">
-        <button
-          onClick={handleClearFilters}
-          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <XMarkIcon className="h-5 w-5" />
-          <span>Limpiar Todo</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleClearFilters}
+            className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <XMarkIcon className="h-5 w-5" />
+            <span>Limpiar Todo</span>
+          </button>
+          <button
+            onClick={handleDiagnostic}
+            className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-orange-700 hover:text-orange-900 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors border border-orange-200"
+            title="Ver cuántos check-ins hay en la base de datos"
+          >
+            <WrenchScrewdriverIcon className="h-5 w-5" />
+            <span>Diagnóstico</span>
+          </button>
+        </div>
         <Button onClick={handleApplyFilters} size="lg">
           <FunnelIcon className="h-5 w-5 mr-2" />
           Generar Reporte
