@@ -267,8 +267,12 @@ export async function generateAttendanceReport(filters: ReportFilters): Promise<
 
     const reportData: AttendanceReportData[] = [];
 
-    // Filter users based on all criteria
-    let relevantUsers = users.filter(u => u.status === 'active');
+    // Get unique user IDs from filtered check-ins
+    const userIdsFromCheckIns = new Set(checkIns.map(ci => ci.userId));
+    console.log(`👥 Found ${userIdsFromCheckIns.size} unique users in filtered check-ins`);
+
+    // Filter users based on criteria (but NOT by productType - that's in check-ins)
+    let relevantUsers = users.filter(u => u.status === 'active' && userIdsFromCheckIns.has(u.id));
 
     if (filters.userIds && filters.userIds.length > 0) {
       relevantUsers = relevantUsers.filter(u => filters.userIds!.includes(u.id));
@@ -282,9 +286,8 @@ export async function generateAttendanceReport(filters: ReportFilters): Promise<
       relevantUsers = relevantUsers.filter(u => u.supervisorId && filters.supervisorIds!.includes(u.supervisorId));
     }
 
-    if (filters.productTypes && filters.productTypes.length > 0) {
-      relevantUsers = relevantUsers.filter(u => filters.productTypes!.includes(u.productType));
-    }
+    // NOTE: productType filter already applied to check-ins
+    // Users can work on different products, so we don't filter users by productType
 
     console.log(`👥 Processing ${relevantUsers.length} users`);
 
@@ -367,9 +370,15 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
 
     const reportData: ProductivityReportData[] = [];
 
-    const relevantUsers = filters.userIds && filters.userIds.length > 0
-      ? users.filter(u => filters.userIds!.includes(u.id))
-      : users.filter(u => u.status === 'active');
+    // Get unique user IDs from filtered check-ins
+    const userIdsFromCheckIns = new Set(checkIns.map(ci => ci.userId));
+
+    // Filter users: must be in filtered check-ins AND optionally match other filters
+    let relevantUsers = users.filter(u => u.status === 'active' && userIdsFromCheckIns.has(u.id));
+
+    if (filters.userIds && filters.userIds.length > 0) {
+      relevantUsers = relevantUsers.filter(u => filters.userIds!.includes(u.id));
+    }
 
     for (const user of relevantUsers) {
       const userCheckIns = checkIns.filter(ci => ci.userId === user.id);
