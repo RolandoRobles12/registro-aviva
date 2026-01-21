@@ -385,6 +385,8 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
       let earlyDepartures = 0;
       let lateArrivals = 0;
       let perfectDays = 0;
+      let daysWithWorkHours = 0; // Only count days where we calculated actual work hours
+      let daysWithLunch = 0; // Only count days where we calculated lunch time
 
       for (const [date, dayCheckIns] of Object.entries(checkInsByDate)) {
         const entrada = dayCheckIns.find(ci => ci.type === 'entrada');
@@ -406,6 +408,7 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
           // Only add positive work hours (salida must be after entrada)
           if (workMinutes > 0) {
             totalWorkHours += workMinutes / 60;
+            daysWithWorkHours++; // Count this day as having valid work hours
           } else {
             console.warn(`⚠️ Invalid work hours for ${user.name} on ${date}: salida before entrada`);
           }
@@ -425,6 +428,7 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
           // Only add positive lunch minutes
           if (lunchMinutes > 0) {
             totalLunchMinutes += lunchMinutes;
+            daysWithLunch++; // Count this day as having valid lunch time
           } else {
             console.warn(`⚠️ Invalid lunch time for ${user.name} on ${date}: regreso before comida`);
           }
@@ -434,20 +438,20 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
         if (entrada && entrada.status === 'retrasado') lateArrivals++;
         if (salida && salida.status === 'anticipado') earlyDepartures++;
 
-        // Perfect day: all check-ins on time
+        // Perfect day: all check-ins on time AND has at least entrada+salida
         const allOnTime = dayCheckIns.every(ci => ci.status === 'a_tiempo');
-        if (allOnTime && dayCheckIns.length >= 2) perfectDays++;
+        if (allOnTime && entrada && salida) perfectDays++;
       }
 
-      const workDays = Object.keys(checkInsByDate).length;
+      const workDays = daysWithWorkHours; // Use actual days with calculated hours
 
       reportData.push({
         userId: user.id,
         userName: user.name,
         totalWorkHours,
-        averageWorkHoursPerDay: workDays > 0 ? totalWorkHours / workDays : 0,
+        averageWorkHoursPerDay: daysWithWorkHours > 0 ? totalWorkHours / daysWithWorkHours : 0,
         totalLunchMinutes,
-        averageLunchMinutes: workDays > 0 ? totalLunchMinutes / workDays : 0,
+        averageLunchMinutes: daysWithLunch > 0 ? totalLunchMinutes / daysWithLunch : 0,
         workDays,
         earlyDepartures,
         lateArrivals,
