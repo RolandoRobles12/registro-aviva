@@ -106,7 +106,8 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
   const handleDiagnostic = async () => {
     try {
       console.log('🔍 Iniciando diagnóstico de base de datos...');
-      const snapshot = await getDocs(collection(db, 'checkIns'));
+      // IMPORTANTE: La colección se llama 'checkins' (minúsculas)
+      const snapshot = await getDocs(collection(db, 'checkins'));
       const totalCheckIns = snapshot.docs.length;
 
       console.log(`📊 DIAGNÓSTICO: Se encontraron ${totalCheckIns} check-ins en total`);
