@@ -150,7 +150,8 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
     { value: 'BA', label: 'BA', color: 'blue' },
     { value: 'Aviva_Contigo', label: 'Aviva Contigo', color: 'purple' },
     { value: 'Casa_Marchand', label: 'Casa Marchand', color: 'green' },
-    { value: 'Otro', label: 'Otro', color: 'gray' }
+    { value: 'Construrama', label: 'Construrama', color: 'orange' },
+    { value: 'Disensa', label: 'Disensa', color: 'red' }
   ];
 
   const checkInTypes = [
