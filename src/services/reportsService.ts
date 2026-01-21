@@ -103,22 +103,15 @@ export interface MonthlyReportData {
 }
 
 /**
- * Get check-ins with filters
+ * Get check-ins with filters - NO INDEXES NEEDED!
  */
 export async function getFilteredCheckIns(filters: ReportFilters): Promise<CheckIn[]> {
   try {
-    console.log('🔍 Fetching check-ins with filters:', filters);
+    console.log('🔍 Fetching ALL check-ins (no index needed)...');
 
-    // Simple query with only timestamp - no compound indexes needed
-    const q = query(
-      collection(db, 'checkIns'),
-      where('timestamp', '>=', Timestamp.fromDate(filters.startDate)),
-      where('timestamp', '<=', Timestamp.fromDate(filters.endDate)),
-      orderBy('timestamp', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
-    console.log(`📊 Found ${snapshot.docs.length} check-ins in date range`);
+    // Get ALL check-ins - no filters, no indexes required
+    const snapshot = await getDocs(collection(db, 'checkIns'));
+    console.log(`📊 Found ${snapshot.docs.length} total check-ins in database`);
 
     let checkIns = snapshot.docs.map(doc => {
       const data = doc.data();
@@ -130,7 +123,14 @@ export async function getFilteredCheckIns(filters: ReportFilters): Promise<Check
       } as CheckIn;
     });
 
-    // Apply filters in memory (no index needed)
+    // Apply ALL filters in memory (no indexes needed!)
+    console.log('🔍 Applying date filter...');
+    checkIns = checkIns.filter(ci => {
+      const ciDate = ci.timestamp instanceof Timestamp ? ci.timestamp.toDate() : new Date(ci.timestamp);
+      return ciDate >= filters.startDate && ciDate <= filters.endDate;
+    });
+    console.log(`📊 After date filter: ${checkIns.length} check-ins`);
+
     if (filters.userIds && filters.userIds.length > 0) {
       checkIns = checkIns.filter(ci => filters.userIds!.includes(ci.userId));
       console.log(`🔍 After user filter: ${checkIns.length} check-ins`);
@@ -155,6 +155,13 @@ export async function getFilteredCheckIns(filters: ReportFilters): Promise<Check
       checkIns = checkIns.filter(ci => ci.status === filters.status);
       console.log(`🔍 After status filter: ${checkIns.length} check-ins`);
     }
+
+    // Sort by timestamp descending
+    checkIns.sort((a, b) => {
+      const aDate = a.timestamp instanceof Timestamp ? a.timestamp.toDate() : new Date(a.timestamp);
+      const bDate = b.timestamp instanceof Timestamp ? b.timestamp.toDate() : new Date(b.timestamp);
+      return bDate.getTime() - aDate.getTime();
+    });
 
     console.log(`✅ Final filtered check-ins: ${checkIns.length}`);
     return checkIns;
