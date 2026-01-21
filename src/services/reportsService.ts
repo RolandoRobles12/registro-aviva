@@ -131,9 +131,31 @@ export async function getFilteredCheckIns(filters: ReportFilters): Promise<Check
     });
     console.log(`📊 After date filter: ${checkIns.length} check-ins`);
 
-    if (filters.userIds && filters.userIds.length > 0) {
-      checkIns = checkIns.filter(ci => filters.userIds!.includes(ci.userId));
-      console.log(`🔍 After user filter: ${checkIns.length} check-ins`);
+    // Handle hub filter: check-ins don't have hubId, but users do
+    // So we need to get users from those hubs first, then filter by their userIds
+    let allowedUserIds: string[] | undefined = filters.userIds;
+
+    if (filters.hubIds && filters.hubIds.length > 0) {
+      console.log('🔍 Filtering by hubs:', filters.hubIds);
+      const allUsers = await getAllUsers();
+      const usersInHubs = allUsers.filter(u => u.hubId && filters.hubIds!.includes(u.hubId));
+      console.log(`📊 Found ${usersInHubs.length} users in selected hubs`);
+
+      const hubUserIds = usersInHubs.map(u => u.id);
+
+      // If there were already userIds in filters, intersect them
+      if (allowedUserIds && allowedUserIds.length > 0) {
+        allowedUserIds = allowedUserIds.filter(id => hubUserIds.includes(id));
+      } else {
+        allowedUserIds = hubUserIds;
+      }
+
+      console.log(`📊 Total allowed userIds after hub filter: ${allowedUserIds.length}`);
+    }
+
+    if (allowedUserIds && allowedUserIds.length > 0) {
+      checkIns = checkIns.filter(ci => allowedUserIds!.includes(ci.userId));
+      console.log(`🔍 After user/hub filter: ${checkIns.length} check-ins`);
     }
 
     if (filters.kioskIds && filters.kioskIds.length > 0) {
