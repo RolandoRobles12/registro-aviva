@@ -702,7 +702,6 @@ function LocationReportView({ data }: { data: LocationReportData[] }) {
               label: 'Precisión GPS',
               render: (value) => `${value.toFixed(1)}%`
             },
-            { key: 'peakHour', label: 'Hora Pico' },
           ]}
         />
       </div>

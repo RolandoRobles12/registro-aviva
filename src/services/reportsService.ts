@@ -70,7 +70,6 @@ export interface LocationReportData {
   averageCheckInsPerDay: number;
   invalidLocationCheckIns: number;
   locationAccuracyRate: number;
-  peakHour: string;
 }
 
 export interface TeamReportData {
@@ -385,6 +384,8 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
       let earlyDepartures = 0;
       let lateArrivals = 0;
       let perfectDays = 0;
+      let daysWithWorkHours = 0; // Only count days where we calculated actual work hours
+      let daysWithLunch = 0; // Only count days where we calculated lunch time
 
       for (const [date, dayCheckIns] of Object.entries(checkInsByDate)) {
         const entrada = dayCheckIns.find(ci => ci.type === 'entrada');
@@ -406,6 +407,7 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
           // Only add positive work hours (salida must be after entrada)
           if (workMinutes > 0) {
             totalWorkHours += workMinutes / 60;
+            daysWithWorkHours++; // Count this day as having valid work hours
           } else {
             console.warn(`⚠️ Invalid work hours for ${user.name} on ${date}: salida before entrada`);
           }
@@ -425,6 +427,7 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
           // Only add positive lunch minutes
           if (lunchMinutes > 0) {
             totalLunchMinutes += lunchMinutes;
+            daysWithLunch++; // Count this day as having valid lunch time
           } else {
             console.warn(`⚠️ Invalid lunch time for ${user.name} on ${date}: regreso before comida`);
           }
@@ -434,20 +437,20 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
         if (entrada && entrada.status === 'retrasado') lateArrivals++;
         if (salida && salida.status === 'anticipado') earlyDepartures++;
 
-        // Perfect day: all check-ins on time
+        // Perfect day: all check-ins on time AND has at least entrada+salida
         const allOnTime = dayCheckIns.every(ci => ci.status === 'a_tiempo');
-        if (allOnTime && dayCheckIns.length >= 2) perfectDays++;
+        if (allOnTime && entrada && salida) perfectDays++;
       }
 
-      const workDays = Object.keys(checkInsByDate).length;
+      const workDays = daysWithWorkHours; // Use actual days with calculated hours
 
       reportData.push({
         userId: user.id,
         userName: user.name,
         totalWorkHours,
-        averageWorkHoursPerDay: workDays > 0 ? totalWorkHours / workDays : 0,
+        averageWorkHoursPerDay: daysWithWorkHours > 0 ? totalWorkHours / daysWithWorkHours : 0,
         totalLunchMinutes,
-        averageLunchMinutes: workDays > 0 ? totalLunchMinutes / workDays : 0,
+        averageLunchMinutes: daysWithLunch > 0 ? totalLunchMinutes / daysWithLunch : 0,
         workDays,
         earlyDepartures,
         lateArrivals,
@@ -480,22 +483,17 @@ export async function generateLocationReport(filters: ReportFilters): Promise<Lo
       const uniqueUsers = new Set(kioskCheckIns.map(ci => ci.userId)).size;
       const invalidLocationCheckIns = kioskCheckIns.filter(ci => ci.status === 'ubicacion_invalida').length;
 
-      const days = calculateBusinessDays(filters.startDate, filters.endDate);
-      const averageCheckInsPerDay = days > 0 ? kioskCheckIns.length / days : 0;
+      // Calculate unique days where this kiosk had check-ins
+      const uniqueDays = new Set(
+        kioskCheckIns.map(ci => {
+          const date = ci.timestamp instanceof Timestamp
+            ? ci.timestamp.toDate()
+            : new Date(ci.timestamp);
+          return date.toISOString().split('T')[0];
+        })
+      ).size;
 
-      // Calculate peak hour
-      const hourCounts: { [hour: string]: number } = {};
-      kioskCheckIns.forEach(ci => {
-        const date = ci.timestamp instanceof Timestamp
-          ? ci.timestamp.toDate()
-          : new Date(ci.timestamp);
-        const hour = date.getHours();
-        const hourKey = `${hour}:00`;
-        hourCounts[hourKey] = (hourCounts[hourKey] || 0) + 1;
-      });
-
-      const peakHour = Object.entries(hourCounts)
-        .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+      const averageCheckInsPerDay = uniqueDays > 0 ? kioskCheckIns.length / uniqueDays : 0;
 
       reportData.push({
         kioskId: kiosk.id,
@@ -507,7 +505,6 @@ export async function generateLocationReport(filters: ReportFilters): Promise<Lo
         locationAccuracyRate: kioskCheckIns.length > 0
           ? ((kioskCheckIns.length - invalidLocationCheckIns) / kioskCheckIns.length) * 100
           : 0,
-        peakHour,
       });
     }
 

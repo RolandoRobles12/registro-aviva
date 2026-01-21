@@ -153,7 +153,6 @@ export function exportLocationReportToPDF(
     row.uniqueUsers,
     row.averageCheckInsPerDay.toFixed(1),
     `${row.locationAccuracyRate.toFixed(1)}%`,
-    row.peakHour,
   ]);
 
   doc.autoTable({
@@ -163,8 +162,7 @@ export function exportLocationReportToPDF(
       'Check-ins',
       'Usuarios',
       'Promedio/Día',
-      'Precisión GPS',
-      'Hora Pico'
+      'Precisión GPS'
     ]],
     body: tableData,
     theme: 'striped',
@@ -396,7 +394,6 @@ export function exportLocationReportToExcel(
       'Promedio Check-ins/Día': row.averageCheckInsPerDay.toFixed(2),
       'Check-ins Ubicación Inválida': row.invalidLocationCheckIns,
       'Tasa Precisión GPS (%)': row.locationAccuracyRate.toFixed(2),
-      'Hora Pico': row.peakHour,
     }))
   );
 
