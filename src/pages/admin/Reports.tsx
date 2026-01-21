@@ -71,10 +71,11 @@ export default function AdminReports() {
   const [teamData, setTeamData] = useState<TeamReportData[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyReportData | null>(null);
 
-  // Filters
+  // Filters - Use local timezone with full day range
+  const today = new Date();
   const defaultFilters: ReportFilters = {
-    startDate: new Date(new Date().getFullYear(), 0, 1), // Primer día del año
-    endDate: new Date(),
+    startDate: new Date(today.getFullYear(), 0, 1, 0, 0, 0, 0), // Jan 1 at 00:00:00 local
+    endDate: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999), // Today at 23:59:59 local
   };
   const [currentFilters, setCurrentFilters] = useState<ReportFilters>(defaultFilters);
 

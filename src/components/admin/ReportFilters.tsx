@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Kiosk, Hub } from '../../types';
 import { ReportFilters } from '../../services/reportsService';
 import { getAllUsers, getAllKiosks, getAllHubs } from '../../services/reportsService';
-import { FunnelIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
+import { FunnelIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { Button } from '../ui/Button';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
@@ -68,7 +68,7 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
     }
   };
 
-  const handleApplyFilters = () => {
+  const handleApplyFilters = async () => {
     // Parse dates in LOCAL timezone (not UTC!)
     const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
     const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
@@ -85,9 +85,35 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
       status: selectedStatus as any || undefined,
     };
 
-    console.log('🔍 Applying filters:', filters);
+    console.log('🔍 ========== REPORT FILTERS APPLIED ==========');
     console.log('📅 Start date (local):', filters.startDate.toLocaleString('es-MX'));
     console.log('📅 End date (local):', filters.endDate.toLocaleString('es-MX'));
+    console.log('🔧 Filters:', {
+      userIds: filters.userIds?.length || 0,
+      kioskIds: filters.kioskIds?.length || 0,
+      hubIds: filters.hubIds?.length || 0,
+      productTypes: filters.productTypes,
+      checkInType: filters.checkInType,
+      status: filters.status
+    });
+
+    // Quick diagnostic check
+    try {
+      const snapshot = await getDocs(collection(db, 'checkins'));
+      console.log('📊 Total check-ins in database:', snapshot.docs.length);
+
+      if (snapshot.docs.length > 0) {
+        const firstDoc = snapshot.docs[0].data();
+        const lastDoc = snapshot.docs[snapshot.docs.length - 1].data();
+        console.log('📅 First check-in date:', firstDoc.timestamp?.toDate?.()?.toLocaleString('es-MX'));
+        console.log('📅 Last check-in date:', lastDoc.timestamp?.toDate?.()?.toLocaleString('es-MX'));
+      }
+    } catch (error) {
+      console.error('❌ Error checking database:', error);
+    }
+
+    console.log('🔍 ==========================================');
+
     onFilterChange(filters);
   };
 
@@ -108,34 +134,6 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
       startDate: new Date(today.getFullYear(), 0, 1, 0, 0, 0, 0), // Jan 1 at midnight local
       endDate: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999), // Today at 23:59:59 local
     });
-  };
-
-  const handleDiagnostic = async () => {
-    try {
-      console.log('🔍 Iniciando diagnóstico de base de datos...');
-      // IMPORTANTE: La colección se llama 'checkins' (minúsculas)
-      const snapshot = await getDocs(collection(db, 'checkins'));
-      const totalCheckIns = snapshot.docs.length;
-
-      console.log(`📊 DIAGNÓSTICO: Se encontraron ${totalCheckIns} check-ins en total`);
-
-      if (totalCheckIns > 0) {
-        // Mostrar algunas fechas de ejemplo
-        const dates = snapshot.docs.slice(0, 5).map(doc => {
-          const data = doc.data();
-          const timestamp = data.timestamp?.toDate?.() || new Date();
-          return timestamp.toLocaleDateString('es-MX');
-        });
-        console.log('📅 Fechas de ejemplo:', dates);
-
-        alert(`✅ Base de datos OK!\n\nTotal de check-ins: ${totalCheckIns}\n\nEjemplos de fechas:\n${dates.join('\n')}\n\n💡 Si no ves datos, ajusta el rango de fechas para incluir estas fechas.`);
-      } else {
-        alert('❌ No hay check-ins registrados en la base de datos.\n\nPara ver reportes, primero registra algunos check-ins desde /employee/checkin');
-      }
-    } catch (error) {
-      console.error('❌ Error en diagnóstico:', error);
-      alert(`❌ Error al diagnosticar: ${error}\n\nRevisa la consola para más detalles.`);
-    }
   };
 
   const activeFiltersCount = [
@@ -477,23 +475,13 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
 
       {/* Action Buttons */}
       <div className="flex items-center justify-between mt-6 pt-6 border-t">
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={handleClearFilters}
-            className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <XMarkIcon className="h-5 w-5" />
-            <span>Limpiar Todo</span>
-          </button>
-          <button
-            onClick={handleDiagnostic}
-            className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-orange-700 hover:text-orange-900 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors border border-orange-200"
-            title="Ver cuántos check-ins hay en la base de datos"
-          >
-            <WrenchScrewdriverIcon className="h-5 w-5" />
-            <span>Diagnóstico</span>
-          </button>
-        </div>
+        <button
+          onClick={handleClearFilters}
+          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <XMarkIcon className="h-5 w-5" />
+          <span>Limpiar Todo</span>
+        </button>
         <Button onClick={handleApplyFilters} size="lg">
           <FunnelIcon className="h-5 w-5 mr-2" />
           Generar Reporte
