@@ -484,8 +484,17 @@ export async function generateLocationReport(filters: ReportFilters): Promise<Lo
       const uniqueUsers = new Set(kioskCheckIns.map(ci => ci.userId)).size;
       const invalidLocationCheckIns = kioskCheckIns.filter(ci => ci.status === 'ubicacion_invalida').length;
 
-      const days = calculateBusinessDays(filters.startDate, filters.endDate);
-      const averageCheckInsPerDay = days > 0 ? kioskCheckIns.length / days : 0;
+      // Calculate unique days where this kiosk had check-ins
+      const uniqueDays = new Set(
+        kioskCheckIns.map(ci => {
+          const date = ci.timestamp instanceof Timestamp
+            ? ci.timestamp.toDate()
+            : new Date(ci.timestamp);
+          return date.toISOString().split('T')[0];
+        })
+      ).size;
+
+      const averageCheckInsPerDay = uniqueDays > 0 ? kioskCheckIns.length / uniqueDays : 0;
 
       // Calculate peak hour
       const hourCounts: { [hour: string]: number } = {};
@@ -494,7 +503,7 @@ export async function generateLocationReport(filters: ReportFilters): Promise<Lo
           ? ci.timestamp.toDate()
           : new Date(ci.timestamp);
         const hour = date.getHours();
-        const hourKey = `${hour}:00`;
+        const hourKey = `${String(hour).padStart(2, '0')}:00`;
         hourCounts[hourKey] = (hourCounts[hourKey] || 0) + 1;
       });
 
