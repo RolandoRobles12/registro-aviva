@@ -109,8 +109,8 @@ export async function getFilteredCheckIns(filters: ReportFilters): Promise<Check
   try {
     console.log('🔍 Fetching ALL check-ins (no index needed)...');
 
-    // Get ALL check-ins - no filters, no indexes required
-    const snapshot = await getDocs(collection(db, 'checkIns'));
+    // IMPORTANTE: La colección se llama 'checkins' (minúsculas)
+    const snapshot = await getDocs(collection(db, 'checkins'));
     console.log(`📊 Found ${snapshot.docs.length} total check-ins in database`);
 
     let checkIns = snapshot.docs.map(doc => {
