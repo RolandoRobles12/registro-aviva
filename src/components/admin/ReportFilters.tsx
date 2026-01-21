@@ -69,9 +69,13 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
   };
 
   const handleApplyFilters = () => {
+    // Parse dates in LOCAL timezone (not UTC!)
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+
     const filters: ReportFilters = {
-      startDate: new Date(startDate),
-      endDate: new Date(endDate + 'T23:59:59'), // Include full end date
+      startDate: new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0), // Start of day in local time
+      endDate: new Date(endYear, endMonth - 1, endDay, 23, 59, 59, 999), // End of day in local time
       userIds: selectedUserIds.length > 0 ? selectedUserIds : undefined,
       kioskIds: selectedKioskIds.length > 0 ? selectedKioskIds : undefined,
       hubIds: selectedHubIds.length > 0 ? selectedHubIds : undefined,
@@ -82,13 +86,16 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
     };
 
     console.log('🔍 Applying filters:', filters);
+    console.log('📅 Start date (local):', filters.startDate.toLocaleString('es-MX'));
+    console.log('📅 End date (local):', filters.endDate.toLocaleString('es-MX'));
     onFilterChange(filters);
   };
 
   const handleClearFilters = () => {
-    const firstDayOfYear = new Date(new Date().getFullYear(), 0, 1);
+    const today = new Date();
+    const firstDayOfYear = new Date(today.getFullYear(), 0, 1);
     setStartDate(firstDayOfYear.toISOString().split('T')[0]);
-    setEndDate(new Date().toISOString().split('T')[0]);
+    setEndDate(today.toISOString().split('T')[0]);
     setSelectedUserIds([]);
     setSelectedKioskIds([]);
     setSelectedHubIds([]);
@@ -98,8 +105,8 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
     setSelectedStatus('');
 
     onFilterChange({
-      startDate: firstDayOfYear,
-      endDate: new Date(),
+      startDate: new Date(today.getFullYear(), 0, 1, 0, 0, 0, 0), // Jan 1 at midnight local
+      endDate: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999), // Today at 23:59:59 local
     });
   };
 
