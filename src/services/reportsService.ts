@@ -751,7 +751,7 @@ function calculateBusinessDays(startDate: Date, endDate: Date): number {
 }
 
 /**
- * Helper: Group check-ins by date
+ * Helper: Group check-ins by date (LOCAL timezone, not UTC)
  */
 function groupCheckInsByDate(checkIns: CheckIn[]): { [date: string]: CheckIn[] } {
   const grouped: { [date: string]: CheckIn[] } = {};
@@ -760,7 +760,12 @@ function groupCheckInsByDate(checkIns: CheckIn[]): { [date: string]: CheckIn[] }
     const date = ci.timestamp instanceof Timestamp
       ? ci.timestamp.toDate()
       : new Date(ci.timestamp);
-    const dateKey = date.toISOString().split('T')[0];
+
+    // Use LOCAL date, not UTC
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateKey = `${year}-${month}-${day}`;
 
     if (!grouped[dateKey]) {
       grouped[dateKey] = [];
