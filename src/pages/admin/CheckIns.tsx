@@ -391,13 +391,34 @@ export default function AdminCheckIns() {
                 No se encontraron registros
               </h3>
               <p className="mt-1 text-sm text-gray-500">
-                {Object.keys(filters).length > 0 
-                  ? 'No hay check-ins que coincidan con los filtros aplicados. Prueba con criterios diferentes.'
+                {Object.keys(filters).length > 0
+                  ? `No hay check-ins que cumplan con todos los ${Object.keys(filters).length} filtros aplicados.`
                   : 'No hay registros de check-in en el sistema.'
                 }
               </p>
               {Object.keys(filters).length > 0 && (
-                <div className="mt-4">
+                <div className="mt-4 space-y-3">
+                  <div className="text-sm text-gray-600">
+                    <p className="font-medium mb-2">Los filtros se aplicaron correctamente:</p>
+                    <ul className="text-left inline-block space-y-1">
+                      {filters.dateRange && (
+                        <li>✓ Fecha: {filters.dateRange.start?.toLocaleDateString()}
+                          {filters.dateRange.end && ` - ${filters.dateRange.end.toLocaleDateString()}`}
+                        </li>
+                      )}
+                      {filters.productType && <li>✓ Producto: {filters.productType}</li>}
+                      {filters.checkInType && <li>✓ Tipo: {filters.checkInType}</li>}
+                      {filters.kioskId && <li>✓ Kiosco: {filters.kioskId}</li>}
+                      {filters.hubId && <li>✓ Hub: {filters.hubId}</li>}
+                      {filters.status && <li>✓ Estado: {filters.status}</li>}
+                      {filters.userName && <li>✓ Usuario: {filters.userName}</li>}
+                      {filters.state && <li>✓ Estado geográfico: {filters.state}</li>}
+                      {filters.city && <li>✓ Ciudad: {filters.city}</li>}
+                    </ul>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Intenta reducir el número de filtros o ampliar los criterios de búsqueda.
+                  </p>
                   <button
                     onClick={() => setFilters({})}
                     className="text-primary-600 hover:text-primary-500 text-sm font-medium"
