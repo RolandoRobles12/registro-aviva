@@ -385,8 +385,11 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
 
       if (userCheckIns.length === 0) continue;
 
+      console.log(`\n👤 ${user.name}: ${userCheckIns.length} check-ins`);
+
       // Group check-ins by date
       const checkInsByDate = groupCheckInsByDate(userCheckIns);
+      console.log(`  📅 ${Object.keys(checkInsByDate).length} días con check-ins`);
 
       let totalWorkHours = 0;
       let totalLunchMinutes = 0;
@@ -404,6 +407,13 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
           return aTime - bTime;
         });
 
+        // Log what check-ins we have for this day
+        const types = sortedCheckIns.map(ci => {
+          const time = ci.timestamp instanceof Timestamp ? ci.timestamp.toDate() : new Date(ci.timestamp);
+          return `${ci.type}:${time.toLocaleTimeString('es-MX', {hour: '2-digit', minute: '2-digit'})}`;
+        });
+        console.log(`    📆 ${date}: [${types.join(', ')}]`);
+
         const entrada = sortedCheckIns.find(ci => ci.type === 'entrada');
         const salida = sortedCheckIns.find((ci, idx) => {
           // Find salida that comes AFTER entrada
@@ -413,6 +423,11 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
           const entradaIdx = sortedCheckIns.indexOf(entrada);
           return idx > entradaIdx; // Salida must be after entrada
         });
+
+        if (!entrada) console.log(`      ⚠️ No entrada found`);
+        if (!salida) console.log(`      ⚠️ No salida found`);
+        if (entrada && !salida) console.log(`      ⚠️ Entrada found but no salida after it`);
+
         const comida = sortedCheckIns.find(ci => ci.type === 'comida');
         const regresoComida = sortedCheckIns.find((ci, idx) => {
           // Find regreso_comida that comes AFTER comida
@@ -438,8 +453,9 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
           if (workMinutes > 0) {
             totalWorkHours += workMinutes / 60;
             daysWithWorkHours++; // Count this day as having valid work hours
+            console.log(`      ✅ Horas trabajadas: ${(workMinutes / 60).toFixed(2)} hrs`);
           } else {
-            console.warn(`⚠️ Invalid work hours for ${user.name} on ${date}: salida before entrada (${entradaTime.toLocaleTimeString('es-MX')} -> ${salidaTime.toLocaleTimeString('es-MX')})`);
+            console.warn(`      ⚠️ Invalid work hours: salida before entrada (${entradaTime.toLocaleTimeString('es-MX')} -> ${salidaTime.toLocaleTimeString('es-MX')})`);
           }
         }
 
@@ -473,6 +489,8 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
       }
 
       const workDays = daysWithWorkHours; // Use actual days with calculated hours
+
+      console.log(`  ✅ RESUMEN: ${totalWorkHours.toFixed(2)} hrs totales en ${daysWithWorkHours} días (promedio: ${daysWithWorkHours > 0 ? (totalWorkHours / daysWithWorkHours).toFixed(2) : 0} hrs/día)`);
 
       reportData.push({
         userId: user.id,
