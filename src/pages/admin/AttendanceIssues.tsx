@@ -8,7 +8,8 @@ import {
   ExclamationTriangleIcon,
   CheckCircleIcon,
   ArrowPathIcon,
-  FunnelIcon
+  FunnelIcon,
+  InformationCircleIcon
 } from '@heroicons/react/24/outline';
 
 export default function AdminAttendanceIssues() {
@@ -18,6 +19,8 @@ export default function AdminAttendanceIssues() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showResolved, setShowResolved] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<any>(null);
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
 
   useEffect(() => {
     loadIssues();
@@ -32,6 +35,15 @@ export default function AdminAttendanceIssues() {
         resolved: showResolved ? undefined : false
       });
       setIssues(issuesList);
+
+      // Si no hay faltas, ejecutar diagnóstico
+      if (issuesList.length === 0) {
+        const diagnosisResult = await AttendanceService.diagnoseMissingIssues();
+        setDiagnosis(diagnosisResult);
+        setShowDiagnosis(true);
+      } else {
+        setShowDiagnosis(false);
+      }
     } catch (error) {
       console.error('Error loading attendance issues:', error);
       setError('Error cargando las faltas de asistencia');
@@ -210,6 +222,89 @@ export default function AdminAttendanceIssues() {
           </div>
         </div>
       </div>
+
+      {/* Diagnosis Panel - Mostrar solo cuando no hay faltas */}
+      {showDiagnosis && diagnosis && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <InformationCircleIcon className="h-6 w-6 text-gray-500" />
+            </div>
+            <div className="ml-3 flex-1">
+              <h3 className="text-sm font-medium text-gray-900 mb-4">
+                Diagnóstico del Sistema de Detección
+              </h3>
+
+              {/* Estado del Sistema */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                  <div className="text-xs text-gray-500 mb-1">Usuarios Activos</div>
+                  <div className={`text-lg font-semibold ${diagnosis.usersWithProductType > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {diagnosis.usersWithProductType} / {diagnosis.activeUsersCount}
+                  </div>
+                  <div className="text-xs text-gray-500">con producto asignado</div>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                  <div className="text-xs text-gray-500 mb-1">Horarios Configurados</div>
+                  <div className={`text-lg font-semibold ${diagnosis.hasSchedules ? 'text-green-600' : 'text-red-600'}`}>
+                    {diagnosis.schedulesConfigured.length}
+                  </div>
+                  <div className="text-xs text-gray-500">{diagnosis.schedulesConfigured.join(', ') || 'ninguno'}</div>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                  <div className="text-xs text-gray-500 mb-1">Check-ins Hoy</div>
+                  <div className={`text-lg font-semibold ${diagnosis.hasTodayCheckIns ? 'text-green-600' : 'text-yellow-600'}`}>
+                    {diagnosis.todayCheckInsCount}
+                  </div>
+                  <div className="text-xs text-gray-500">registros</div>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 border border-gray-200">
+                  <div className="text-xs text-gray-500 mb-1">Día Laboral</div>
+                  <div className={`text-lg font-semibold ${diagnosis.isWorkDay ? 'text-green-600' : 'text-gray-600'}`}>
+                    {diagnosis.isWorkDay ? 'Sí' : 'No'}
+                  </div>
+                  <div className="text-xs text-gray-500">Hora: {diagnosis.currentTime}</div>
+                </div>
+              </div>
+
+              {/* Advertencias */}
+              {diagnosis.warnings && diagnosis.warnings.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-amber-800 mb-2">⚠️ Advertencias</h4>
+                  <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
+                    {diagnosis.warnings.map((warning: string, index: number) => (
+                      <li key={index}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Sugerencias */}
+              {diagnosis.suggestions && diagnosis.suggestions.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-blue-800 mb-2">💡 Sugerencias</h4>
+                  <ul className="list-disc list-inside text-sm text-blue-700 space-y-1">
+                    {diagnosis.suggestions.map((suggestion: string, index: number) => (
+                      <li key={index}>{suggestion}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Mensaje cuando todo está OK */}
+              {(!diagnosis.warnings || diagnosis.warnings.length === 0) &&
+               (!diagnosis.suggestions || diagnosis.suggestions.length === 0) && (
+                <div className="text-sm text-green-700">
+                  ✅ El sistema está configurado correctamente. Las faltas se detectarán automáticamente cuando corresponda.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white shadow rounded-lg">

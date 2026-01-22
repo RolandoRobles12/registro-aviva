@@ -636,34 +636,34 @@ export class AttendanceService {
       const config = await FirestoreService.getSystemConfig(productType || 'global');
       const warnings: string[] = [];
       const suggestions: string[] = [];
-      
+
       if (!config) {
         warnings.push('No hay configuración definida');
         return { isValid: false, warnings, suggestions };
       }
-      
+
       // Validar rangos razonables
       if (config.absenceRules?.noEntryAfterMinutes && config.absenceRules.noEntryAfterMinutes > 240) {
         warnings.push('Tiempo de gracia para entrada muy alto (>4 horas)');
       }
-      
+
       if (config.absenceRules?.noExitAfterMinutes && config.absenceRules.noExitAfterMinutes > 480) {
         warnings.push('Tiempo de gracia para salida muy alto (>8 horas)');
       }
-      
+
       if (config.lunchRules?.maxDurationMinutes && config.lunchRules.maxDurationMinutes > 180) {
         warnings.push('Tiempo máximo de comida muy alto (>3 horas)');
         suggestions.push('Considera reducir el tiempo máximo de comida a 90-120 minutos');
       }
-      
+
       // Validar consistencia
-      if (config.autoCloseRules?.closeAfterMinutes && 
+      if (config.autoCloseRules?.closeAfterMinutes &&
           config.absenceRules?.noExitAfterMinutes &&
           config.autoCloseRules.closeAfterMinutes < config.absenceRules.noExitAfterMinutes) {
         warnings.push('El cierre automático ocurre antes que la detección de ausencia por salida');
         suggestions.push('El cierre automático debería ocurrir después de la detección de ausencia');
       }
-      
+
       return {
         isValid: warnings.length === 0,
         warnings,
@@ -671,10 +671,139 @@ export class AttendanceService {
       };
     } catch (error) {
       console.error('Error testing configuration rules:', error);
-      return { 
-        isValid: false, 
-        warnings: ['Error validando configuración'], 
-        suggestions: [] 
+      return {
+        isValid: false,
+        warnings: ['Error validando configuración'],
+        suggestions: []
+      };
+    }
+  }
+
+  /**
+   * ✅ NUEVO: Diagnosticar por qué no hay faltas
+   */
+  static async diagnoseMissingIssues(): Promise<{
+    hasActiveUsers: boolean;
+    activeUsersCount: number;
+    usersWithProductType: number;
+    hasSchedules: boolean;
+    schedulesConfigured: string[];
+    hasTodayCheckIns: boolean;
+    todayCheckInsCount: number;
+    isWorkDay: boolean;
+    currentTime: string;
+    detectionGraceMinutes: number;
+    warnings: string[];
+    suggestions: string[];
+  }> {
+    try {
+      const warnings: string[] = [];
+      const suggestions: string[] = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const now = new Date();
+
+      // 1. Verificar usuarios activos
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('status', '==', 'active')
+      );
+      const usersSnapshot = await getDocs(usersQuery);
+      const activeUsers = usersSnapshot.docs.map(d => d.data() as User);
+      const usersWithProductType = activeUsers.filter(u =>
+        u.productType && (u.role === 'user' || u.role === 'employee')
+      );
+
+      if (activeUsers.length === 0) {
+        warnings.push('No hay usuarios activos en el sistema');
+        suggestions.push('Crea usuarios activos en la sección de Usuarios');
+      } else if (usersWithProductType.length === 0) {
+        warnings.push('Ningún usuario tiene asignado un tipo de producto');
+        suggestions.push('Asigna productos (BA, Aviva_Contigo, etc.) a los usuarios en la sección de Usuarios');
+      }
+
+      // 2. Verificar horarios configurados
+      const productTypes: ProductType[] = ['BA', 'Aviva_Contigo', 'Casa_Marchand', 'Construrama', 'Disensa'];
+      const schedulesConfigured: string[] = [];
+
+      for (const productType of productTypes) {
+        const schedule = await ScheduleService.getProductSchedule(productType);
+        if (schedule) {
+          schedulesConfigured.push(productType);
+        }
+      }
+
+      if (schedulesConfigured.length === 0) {
+        warnings.push('No hay horarios configurados para ningún producto');
+        suggestions.push('Configura horarios en la sección de Horarios');
+      }
+
+      // 3. Verificar check-ins del día
+      const checkInsQuery = query(
+        collection(db, 'checkins'),
+        where('timestamp', '>=', Timestamp.fromDate(today)),
+        orderBy('timestamp', 'desc')
+      );
+      const checkInsSnapshot = await getDocs(checkInsQuery);
+      const todayCheckIns = checkInsSnapshot.size;
+
+      if (todayCheckIns === 0) {
+        warnings.push('No hay check-ins registrados para hoy');
+        suggestions.push('Los usuarios deben registrar su entrada para que se detecten faltas');
+      }
+
+      // 4. Verificar si es día laboral (para productos más comunes)
+      let isWorkDay = false;
+      if (usersWithProductType.length > 0) {
+        const mostCommonProduct = usersWithProductType[0].productType;
+        isWorkDay = await ScheduleService.isWorkDay(mostCommonProduct);
+
+        if (!isWorkDay) {
+          warnings.push('Hoy no es día laboral para la mayoría de productos');
+          suggestions.push('Las faltas solo se detectan en días laborales configurados');
+        }
+      }
+
+      // 5. Verificar configuración de detección
+      const config = await FirestoreService.getSystemConfig('global');
+      const detectionGraceMinutes = config?.absenceRules?.noEntryAfterMinutes ?? 60;
+
+      // 6. Verificar si ya pasó el tiempo de gracia
+      const currentHour = now.getHours();
+      if (currentHour < 9) {
+        warnings.push('Aún es temprano para detectar faltas');
+        suggestions.push(`Las faltas de entrada se detectan ${detectionGraceMinutes} minutos después del horario programado`);
+      }
+
+      return {
+        hasActiveUsers: activeUsers.length > 0,
+        activeUsersCount: activeUsers.length,
+        usersWithProductType: usersWithProductType.length,
+        hasSchedules: schedulesConfigured.length > 0,
+        schedulesConfigured,
+        hasTodayCheckIns: todayCheckIns > 0,
+        todayCheckInsCount: todayCheckIns,
+        isWorkDay,
+        currentTime: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+        detectionGraceMinutes,
+        warnings,
+        suggestions
+      };
+    } catch (error) {
+      console.error('Error diagnosing missing issues:', error);
+      return {
+        hasActiveUsers: false,
+        activeUsersCount: 0,
+        usersWithProductType: 0,
+        hasSchedules: false,
+        schedulesConfigured: [],
+        hasTodayCheckIns: false,
+        todayCheckInsCount: 0,
+        isWorkDay: false,
+        currentTime: '',
+        detectionGraceMinutes: 60,
+        warnings: ['Error al ejecutar diagnóstico'],
+        suggestions: []
       };
     }
   }
