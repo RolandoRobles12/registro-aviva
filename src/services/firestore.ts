@@ -244,38 +244,67 @@ export class FirestoreService {
    * Dinamicamente ajusta el límite basado en cuántos filtros secundarios se aplicarán en memoria
    */
   private static calculateQueryLimit(filters?: CheckInFilters, pageSize = 50): number {
+    if (!filters) return pageSize + 1;
+
     let multiplier = 1;
     let activeSecondaryFilters = 0;
 
-    // Contar cuántos filtros secundarios están activos
-    if (filters?.userName) {
+    // Determinar qué filtro será el primario
+    const hasPrimaryDateRange = filters.dateRange?.start || filters.dateRange?.end;
+    const hasPrimaryKiosk = !hasPrimaryDateRange && filters.kioskId;
+    const hasPrimaryProduct = !hasPrimaryDateRange && !hasPrimaryKiosk && filters.productType;
+    const hasPrimaryStatus = !hasPrimaryDateRange && !hasPrimaryKiosk && !hasPrimaryProduct && filters.status;
+    const hasPrimaryCheckInType = !hasPrimaryDateRange && !hasPrimaryKiosk && !hasPrimaryProduct && !hasPrimaryStatus && filters.checkInType;
+
+    // Contar filtros secundarios según el filtro primario
+    if (filters.userName) {
       multiplier += 0.5;
       activeSecondaryFilters++;
     }
 
-    if (filters?.state || filters?.city) {
+    if (filters.kioskId && !hasPrimaryKiosk) {
+      multiplier += 1.5; // Kiosk específico reduce mucho
+      activeSecondaryFilters++;
+    }
+
+    if (filters.productType && !hasPrimaryProduct) {
+      multiplier += 2.0; // Product type reduce significativamente
+      activeSecondaryFilters++;
+    }
+
+    if (filters.status && !hasPrimaryStatus) {
+      multiplier += 1.5;
+      activeSecondaryFilters++;
+    }
+
+    if (filters.checkInType && !hasPrimaryCheckInType) {
+      multiplier += 2.5; // Check-in type es muy selectivo (entrada, comida, etc.)
+      activeSecondaryFilters++;
+    }
+
+    if (filters.state || filters.city) {
       multiplier += 1.0; // Filtros geográficos necesitan join con kiosks
       activeSecondaryFilters++;
     }
 
-    if (filters?.hubId) {
-      multiplier += 0.8; // Hub filter también necesita join con kiosks
+    if (filters.hubId) {
+      multiplier += 1.0; // Hub filter también necesita join con kiosks
       activeSecondaryFilters++;
     }
 
     // Si hay múltiples filtros secundarios, aumentar más el multiplicador
     // porque la intersección de filtros puede reducir significativamente los resultados
     if (activeSecondaryFilters >= 2) {
-      multiplier += 1.0; // Bonus por múltiples filtros
+      multiplier += 2.0; // Bonus por múltiples filtros
     }
 
     if (activeSecondaryFilters >= 3) {
-      multiplier += 1.5; // Bonus adicional por 3+ filtros
+      multiplier += 3.0; // Bonus adicional por 3+ filtros
     }
 
     // Cap the multiplier to avoid excessive data loading
     // pero permitir un límite más alto si hay muchos filtros
-    const maxMultiplier = activeSecondaryFilters >= 2 ? 5 : 3;
+    const maxMultiplier = activeSecondaryFilters >= 2 ? 10 : 5;
     multiplier = Math.min(multiplier, maxMultiplier);
 
     const calculatedLimit = Math.ceil(pageSize * multiplier) + 1; // +1 for hasNext detection
