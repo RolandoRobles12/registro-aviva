@@ -155,9 +155,15 @@ export interface CheckInFilters {
   productType?: ProductType
   type?: CheckInType
   status?: CheckInStatus
-  startDate?: Date
-  endDate?: Date
-  hubId?: string // NUEVO: Filtrar por hub
+  dateRange?: {
+    start?: Date
+    end?: Date
+  }
+  hubId?: string // Filtrar por hub
+  userName?: string // Búsqueda por nombre de usuario (aplicado en memoria)
+  checkInType?: CheckInType // Tipo de check-in (entrada, comida, etc.)
+  state?: string // Estado geográfico (aplicado en memoria)
+  city?: string // Ciudad (aplicado en memoria)
 }
 
 export interface PaginatedResponse<T> {

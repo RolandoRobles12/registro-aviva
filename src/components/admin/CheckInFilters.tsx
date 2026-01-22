@@ -82,22 +82,39 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
     // Crear fecha con la hora apropiada
     let date: Date;
     if (type === 'start') {
-      // Fecha de inicio: 00:00:00
+      // Fecha de inicio: 00:00:00 local
       date = new Date(value + 'T00:00:00');
     } else {
-      // Fecha de fin: 23:59:59 para incluir todo el día
+      // Fecha de fin: 23:59:59 local para incluir todo el día
       date = new Date(value + 'T23:59:59');
     }
 
-    console.log(`📅 Setting ${type} date:`, value, '→', date);
+    console.log(`📅 Setting ${type} date:`, value, '→', date.toISOString());
 
-    setLocalFilters(prev => ({
-      ...prev,
-      dateRange: {
+    setLocalFilters(prev => {
+      const newDateRange = {
         ...(prev.dateRange || {}),
         [type]: date
+      };
+
+      // Validación: Si se está estableciendo fecha de fin y ya existe fecha de inicio,
+      // verificar que la fecha de fin no sea anterior a la de inicio
+      if (type === 'end' && newDateRange.start && date < newDateRange.start) {
+        console.warn('⚠️ End date cannot be before start date. Adjusting start date.');
+        // Ajustar la fecha de inicio al mismo día que la fecha de fin
+        newDateRange.start = new Date(value + 'T00:00:00');
       }
-    }));
+
+      // Validación: Si se está estableciendo fecha de inicio y ya existe fecha de fin,
+      // verificar que la fecha de inicio no sea posterior a la de fin
+      if (type === 'start' && newDateRange.end && date > newDateRange.end) {
+        console.warn('⚠️ Start date cannot be after end date. Adjusting end date.');
+        // Ajustar la fecha de fin al mismo día que la fecha de inicio
+        newDateRange.end = new Date(value + 'T23:59:59');
+      }
+
+      return { ...prev, dateRange: newDateRange };
+    });
   };
 
   const applyFilters = () => {

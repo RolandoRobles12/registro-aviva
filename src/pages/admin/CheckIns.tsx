@@ -30,13 +30,53 @@ export default function AdminCheckIns() {
     loadInitialData();
   }, []);
 
-  // ✅ Recargar cuando cambien los filtros (con debounce implícito)
+  // ✅ Recargar cuando cambien los filtros - sin delay para mejor respuesta
   useEffect(() => {
-    const timer = setTimeout(() => {
-      loadCheckIns(true); // true = reset pagination
-    }, 100); // Pequeño delay para evitar múltiples llamadas
+    // Cargar inmediatamente con reset de paginación cuando cambien los filtros
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setCheckIns([]);
+        setLastDoc(undefined);
+        setCurrentPage(1);
+        setTotalLoaded(0);
+        setHasNext(false);
+        setError(null);
 
-    return () => clearTimeout(timer);
+        console.log('🔍 Loading check-ins with filters:', filters);
+
+        const result = await FirestoreService.getCheckIns(filters, 1, 50, undefined);
+
+        console.log('📊 Check-ins loaded:', {
+          newData: result.data.length,
+          hasNext: result.hasNext,
+          page: result.page
+        });
+
+        setCheckIns(result.data);
+        setTotalLoaded(result.data.length);
+        setHasNext(result.hasNext);
+        setLastDoc(result.lastDoc);
+      } catch (error: any) {
+        console.error('❌ Error loading check-ins:', error);
+
+        let errorMessage = 'Error cargando registros de check-in';
+
+        if (error.message.includes('index')) {
+          errorMessage = 'Error de índice en la base de datos. Los filtros combinados pueden no estar disponibles.';
+        } else if (error.message.includes('permission')) {
+          errorMessage = 'Sin permisos para acceder a los datos.';
+        } else if (error.message.includes('quota')) {
+          errorMessage = 'Cuota de base de datos excedida. Intenta con filtros más específicos.';
+        }
+
+        setError(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
   }, [filters]);
 
   const loadInitialData = async () => {
@@ -67,7 +107,7 @@ export default function AdminCheckIns() {
     }
   };
 
-  // ✅ Función principal para cargar check-ins con mejor manejo de errores
+  // ✅ Función para cargar más check-ins (paginación)
   const loadCheckIns = useCallback(async (resetPagination = false) => {
     try {
       if (resetPagination) {
@@ -79,13 +119,13 @@ export default function AdminCheckIns() {
       } else {
         setLoadingMore(true);
       }
-      
+
       setError(null);
 
-      console.log('🔍 Loading check-ins...', { 
-        filters, 
-        resetPagination, 
-        currentPage: resetPagination ? 1 : currentPage + 1 
+      console.log('🔍 Loading check-ins...', {
+        filters,
+        resetPagination,
+        currentPage: resetPagination ? 1 : currentPage + 1
       });
 
       const result = await FirestoreService.getCheckIns(
@@ -94,7 +134,7 @@ export default function AdminCheckIns() {
         50, // Page size
         resetPagination ? undefined : lastDoc
       );
-      
+
       console.log('📊 Check-ins loaded:', {
         newData: result.data.length,
         hasNext: result.hasNext,
@@ -108,20 +148,20 @@ export default function AdminCheckIns() {
         setCheckIns(prev => [...prev, ...result.data]);
         setTotalLoaded(prev => prev + result.data.length);
       }
-      
+
       setHasNext(result.hasNext);
       setLastDoc(result.lastDoc);
-      
+
       if (!resetPagination) {
         setCurrentPage(prev => prev + 1);
       }
 
     } catch (error: any) {
       console.error('❌ Error loading check-ins:', error);
-      
+
       // ✅ Mensajes de error más específicos
       let errorMessage = 'Error cargando registros de check-in';
-      
+
       if (error.message.includes('index')) {
         errorMessage = 'Error de índice en la base de datos. Los filtros combinados pueden no estar disponibles.';
       } else if (error.message.includes('permission')) {
@@ -129,7 +169,7 @@ export default function AdminCheckIns() {
       } else if (error.message.includes('quota')) {
         errorMessage = 'Cuota de base de datos excedida. Intenta con filtros más específicos.';
       }
-      
+
       setError(errorMessage);
     } finally {
       setLoading(false);

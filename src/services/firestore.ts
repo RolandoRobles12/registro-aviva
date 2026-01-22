@@ -199,18 +199,50 @@ export class FirestoreService {
 
   /**
    * Calculate optimal query limit based on expected filtering
+   * Dinamicamente ajusta el límite basado en cuántos filtros secundarios se aplicarán en memoria
    */
   private static calculateQueryLimit(filters?: CheckInFilters, pageSize = 50): number {
     let multiplier = 1;
-    
-    // Increase multiplier based on filters that will be applied in memory
-    if (filters?.userName) multiplier += 0.5;
-    if (filters?.state || filters?.city) multiplier += 1; // Geographic filters need kiosk join
-    
+    let activeSecondaryFilters = 0;
+
+    // Contar cuántos filtros secundarios están activos
+    if (filters?.userName) {
+      multiplier += 0.5;
+      activeSecondaryFilters++;
+    }
+
+    if (filters?.state || filters?.city) {
+      multiplier += 1.0; // Filtros geográficos necesitan join con kiosks
+      activeSecondaryFilters++;
+    }
+
+    if (filters?.hubId) {
+      multiplier += 0.8; // Hub filter también necesita join con kiosks
+      activeSecondaryFilters++;
+    }
+
+    // Si hay múltiples filtros secundarios, aumentar más el multiplicador
+    // porque la intersección de filtros puede reducir significativamente los resultados
+    if (activeSecondaryFilters >= 2) {
+      multiplier += 1.0; // Bonus por múltiples filtros
+    }
+
+    if (activeSecondaryFilters >= 3) {
+      multiplier += 1.5; // Bonus adicional por 3+ filtros
+    }
+
     // Cap the multiplier to avoid excessive data loading
-    multiplier = Math.min(multiplier, 3);
-    
-    return Math.ceil(pageSize * multiplier) + 1; // +1 for hasNext detection
+    // pero permitir un límite más alto si hay muchos filtros
+    const maxMultiplier = activeSecondaryFilters >= 2 ? 5 : 3;
+    multiplier = Math.min(multiplier, maxMultiplier);
+
+    const calculatedLimit = Math.ceil(pageSize * multiplier) + 1; // +1 for hasNext detection
+
+    if (activeSecondaryFilters > 0) {
+      console.log(`🔢 Query limit calculation: pageSize=${pageSize}, multiplier=${multiplier.toFixed(2)}, activeSecondaryFilters=${activeSecondaryFilters}, result=${calculatedLimit}`);
+    }
+
+    return calculatedLimit;
   }
 
   /**
