@@ -354,6 +354,8 @@ export async function generateAttendanceReport(filters: ReportFilters): Promise<
 
     console.log(`👥 Processing ${relevantUsers.length} active users (from ${allUsers.length} total)`);
 
+    const reportData: AttendanceReportData[] = [];
+
     for (const user of relevantUsers) {
       const userCheckIns = checkIns.filter(ci => ci.userId === user.id);
 
