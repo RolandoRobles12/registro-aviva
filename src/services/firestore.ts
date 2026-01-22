@@ -80,9 +80,9 @@ export class FirestoreService {
       
       // Strategy: Use single indexed field + in-memory filtering
       const queryResult = await this.buildOptimizedCheckInsQuery(filters, pageSize, lastDoc);
-      
-      // Apply secondary filters in memory
-      const filteredData = await this.applySecondaryFilters(queryResult.data, filters);
+
+      // Apply secondary filters in memory (pass queryType to avoid re-applying primary filter)
+      const filteredData = await this.applySecondaryFilters(queryResult.data, filters, queryResult.queryType);
       
       // Handle pagination after filtering
       const paginatedData = filteredData.slice(0, pageSize);
@@ -267,50 +267,80 @@ export class FirestoreService {
   }
 
   /**
-   * Apply secondary filters in memory (non-indexed fields)
+   * Apply secondary filters in memory (filters not used as primary indexed filter)
    */
   private static async applySecondaryFilters(
-    checkins: CheckIn[], 
-    filters?: CheckInFilters
+    checkins: CheckIn[],
+    filters?: CheckInFilters,
+    queryType?: string
   ): Promise<CheckIn[]> {
     if (!filters) return checkins;
 
     let filtered = [...checkins];
     let kioskMap: Map<string, Kiosk> | undefined;
 
-    // Text search filter
+    console.log(`🔧 Applying secondary filters (queryType: ${queryType})`);
+
+    // Apply filters that were NOT used as the primary indexed filter
+    // Each filter is applied only if it wasn't the primary query filter
+
+    // Text search filter (always secondary)
     if (filters.userName?.trim()) {
       const searchTerm = filters.userName.toLowerCase().trim();
-      filtered = filtered.filter(c => 
+      filtered = filtered.filter(c =>
         c.userName.toLowerCase().includes(searchTerm)
       );
       console.log(`🔍 User name filter: ${filtered.length} remaining`);
     }
 
-    // Geographic filters and hub filter (require kiosk data)
+    // KioskId filter (only if not used as primary)
+    if (filters.kioskId && queryType !== 'kioskId') {
+      filtered = this.filterByKioskId(filtered, filters.kioskId);
+      console.log(`📍 Kiosk filter (${filters.kioskId}): ${filtered.length} remaining`);
+    }
+
+    // ProductType filter (only if not used as primary)
+    if (filters.productType && queryType !== 'productType') {
+      filtered = this.filterByProductType(filtered, filters.productType);
+      console.log(`📦 Product type filter (${filters.productType}): ${filtered.length} remaining`);
+    }
+
+    // Status filter (only if not used as primary)
+    if (filters.status && queryType !== 'status') {
+      filtered = this.filterByStatus(filtered, filters.status);
+      console.log(`✅ Status filter (${filters.status}): ${filtered.length} remaining`);
+    }
+
+    // CheckInType filter (only if not used as primary)
+    if (filters.checkInType && queryType !== 'checkInType') {
+      filtered = this.filterByCheckInType(filtered, filters.checkInType);
+      console.log(`🚪 Check-in type filter (${filters.checkInType}): ${filtered.length} remaining`);
+    }
+
+    // DateRange filter (only if not used as primary)
+    if (filters.dateRange && queryType !== 'dateRange') {
+      filtered = this.filterByDateRange(filtered, filters.dateRange);
+      console.log(`📅 Date range filter: ${filtered.length} remaining`);
+    }
+
+    // Geographic filters and hub filter (require kiosk data, always secondary)
     if (filters.state || filters.city || filters.hubId) {
       console.log('🔗 Loading kiosk data for geographic/hub filtering...');
       kioskMap = await this.loadKioskMap();
 
       if (filters.state) {
-        filtered = filtered.filter(c => {
-          const kiosk = kioskMap!.get(c.kioskId);
-          return kiosk?.state === filters.state;
-        });
+        filtered = this.filterByState(filtered, filters.state, kioskMap);
         console.log(`🗺️ State filter (${filters.state}): ${filtered.length} remaining`);
       }
 
       if (filters.city) {
-        filtered = filtered.filter(c => {
-          const kiosk = kioskMap!.get(c.kioskId);
-          return kiosk?.city === filters.city;
-        });
+        filtered = this.filterByCity(filtered, filters.city, kioskMap);
         console.log(`🏙️ City filter (${filters.city}): ${filtered.length} remaining`);
       }
 
       if (filters.hubId) {
         const beforeHubFilter = filtered.length;
-        filtered = this.filterByHub(filtered, filters.hubId, kioskMap!);
+        filtered = this.filterByHub(filtered, filters.hubId, kioskMap);
 
         if (filtered.length === 0 && beforeHubFilter > 0) {
           console.warn(`⚠️ WARNING: Hub filter removed all ${beforeHubFilter} check-ins`);
@@ -318,6 +348,7 @@ export class FirestoreService {
       }
     }
 
+    console.log(`✅ Secondary filtering complete: ${checkins.length} → ${filtered.length}`);
     return filtered;
   }
 

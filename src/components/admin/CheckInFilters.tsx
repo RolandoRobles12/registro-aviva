@@ -153,7 +153,23 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
     onFiltersChange(emptyFilters);
   };
 
-  const hasActiveFilters = Object.values(localFilters).some(value => 
+  const setTodayFilter = () => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+
+    // Set both start and end to today to filter only today's check-ins
+    const startDate = new Date(todayStr + 'T00:00:00');
+    const endDate = new Date(todayStr + 'T23:59:59');
+
+    setLocalFilters(prev => ({
+      ...prev,
+      dateRange: { start: startDate, end: endDate }
+    }));
+
+    console.log('📅 Set filter to today only:', todayStr);
+  };
+
+  const hasActiveFilters = Object.values(localFilters).some(value =>
     value !== undefined && value !== null && value !== ''
   );
 
@@ -231,21 +247,37 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
           </h4>
           
           {/* Date Range - Highest Priority */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <Input
-              label="📅 Fecha desde"
-              type="date"
-              value={formatDateForInput(localFilters.dateRange?.start)}
-              onChange={(e) => handleDateRangeChange('start', e.target.value)}
-            />
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700">
+                📅 Rango de fechas
+              </label>
+              <button
+                type="button"
+                onClick={setTodayFilter}
+                className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+              >
+                📅 Solo hoy
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Desde"
+                type="date"
+                value={formatDateForInput(localFilters.dateRange?.start)}
+                onChange={(e) => handleDateRangeChange('start', e.target.value)}
+              />
 
-            <Input
-              label="📅 Fecha hasta"
-              type="date"
-              value={formatDateForInput(localFilters.dateRange?.end)}
-              onChange={(e) => handleDateRangeChange('end', e.target.value)}
-              min={formatDateForInput(localFilters.dateRange?.start)}
-            />
+              <Input
+                label="Hasta (mismo día para filtrar solo ese día)"
+                type="date"
+                value={formatDateForInput(localFilters.dateRange?.end)}
+                onChange={(e) => handleDateRangeChange('end', e.target.value)}
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              💡 Tip: Usa la misma fecha en ambos campos para filtrar un solo día, o haz clic en "Solo hoy" para el día actual.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
