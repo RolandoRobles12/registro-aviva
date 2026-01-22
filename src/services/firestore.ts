@@ -42,7 +42,28 @@ import { ScheduleService } from './schedules';
  * Main Firestore service class with optimized queries and error handling
  */
 export class FirestoreService {
-  
+
+  // ================== CACHE MANAGEMENT ==================
+
+  private static kioskMapCache: {
+    data: Map<string, Kiosk> | null;
+    timestamp: number;
+    ttl: number;
+  } = {
+    data: null,
+    timestamp: 0,
+    ttl: 5 * 60 * 1000 // 5 minutos
+  };
+
+  /**
+   * Invalidate kiosk cache (call when kiosks are updated)
+   */
+  static invalidateKioskCache(): void {
+    console.log('🗑️ Invalidating kiosk cache');
+    this.kioskMapCache.data = null;
+    this.kioskMapCache.timestamp = 0;
+  }
+
   // ================== CHECK-INS WITH OPTIMIZED FILTERING ==================
   
   /**
@@ -288,47 +309,11 @@ export class FirestoreService {
       }
 
       if (filters.hubId) {
-        console.log(`🏢 Applying Hub filter: ${filters.hubId}`);
-        console.log(`  - Total kiosks in map: ${kioskMap!.size}`);
-
-        // Debug: Mostrar hubIds únicos en los kiosks
-        const hubIds = new Set<string>();
-        kioskMap!.forEach(kiosk => {
-          if (kiosk.hubId) hubIds.add(kiosk.hubId);
-        });
-        console.log(`  - Unique hubIds found in kiosks:`, Array.from(hubIds));
-
-        // Contar cuántos kiosks tienen el hubId buscado
-        const kiosksWithTargetHub = Array.from(kioskMap!.values()).filter(k => k.hubId === filters.hubId);
-        console.log(`  - Kiosks with target hubId '${filters.hubId}': ${kiosksWithTargetHub.length}`);
-        if (kiosksWithTargetHub.length > 0) {
-          console.log(`    Examples:`, kiosksWithTargetHub.slice(0, 3).map(k => `${k.id} (${k.name})`));
-        }
-
         const beforeHubFilter = filtered.length;
-        const debugLimit = 5;
-        let debugCount = 0;
-
-        filtered = filtered.filter(c => {
-          const kiosk = kioskMap!.get(c.kioskId);
-          const matches = kiosk?.hubId === filters.hubId;
-
-          if (import.meta.env.DEV && debugCount < debugLimit) {
-            console.log(`  ${matches ? '✅' : '❌'} Check-in from kiosk ${c.kioskId} (${kiosk?.name || 'unknown'}): hubId=${kiosk?.hubId || 'NONE'}, matches=${matches}`);
-            debugCount++;
-          }
-
-          return matches;
-        });
-
-        console.log(`🏢 Hub filter result: ${beforeHubFilter} → ${filtered.length} (${beforeHubFilter - filtered.length} filtered out)`);
+        filtered = this.filterByHub(filtered, filters.hubId, kioskMap!);
 
         if (filtered.length === 0 && beforeHubFilter > 0) {
-          console.warn(`⚠️ WARNING: No check-ins found for hub '${filters.hubId}'`);
-          console.warn(`  Possible issues:`);
-          console.warn(`  1. Kiosks might not have hubId assigned in database`);
-          console.warn(`  2. No check-ins exist from kiosks with this hubId`);
-          console.warn(`  3. Hub ID might be incorrect (check spelling/case)`);
+          console.warn(`⚠️ WARNING: Hub filter removed all ${beforeHubFilter} check-ins`);
         }
       }
     }
@@ -337,18 +322,35 @@ export class FirestoreService {
   }
 
   /**
-   * Load kiosk data for geographic filtering
+   * Load kiosk data for geographic filtering with caching
    */
   private static async loadKioskMap(): Promise<Map<string, Kiosk>> {
     try {
+      const now = Date.now();
+      const cacheValid = this.kioskMapCache.data &&
+                        (now - this.kioskMapCache.timestamp) < this.kioskMapCache.ttl;
+
+      if (cacheValid) {
+        console.log('✅ Using cached kiosk map');
+        return this.kioskMapCache.data!;
+      }
+
+      console.log('🔄 Loading fresh kiosk data...');
       const kiosks = await this.getAllKiosks();
       const kioskMap = new Map<string, Kiosk>();
-      
+
       kiosks.forEach(kiosk => {
         kioskMap.set(kiosk.id, kiosk);
       });
-      
-      console.log(`📍 Loaded ${kioskMap.size} kiosks for filtering`);
+
+      // Update cache
+      this.kioskMapCache = {
+        data: kioskMap,
+        timestamp: now,
+        ttl: this.kioskMapCache.ttl
+      };
+
+      console.log(`📍 Loaded and cached ${kioskMap.size} kiosks for filtering`);
       return kioskMap;
     } catch (error) {
       console.error('Error loading kiosk map:', error);
@@ -413,7 +415,7 @@ export class FirestoreService {
    * Apply all filters in memory (for fallback scenarios)
    */
   private static async applyAllFiltersInMemory(
-    checkins: CheckIn[], 
+    checkins: CheckIn[],
     filters?: CheckInFilters
   ): Promise<CheckIn[]> {
     if (!filters) return checkins;
@@ -434,14 +436,18 @@ export class FirestoreService {
       filtered = operation();
     }
 
-    // Geographic filters (async)
-    if (filters.state || filters.city) {
+    // Geographic filters and hub filter (async - require kiosk data)
+    if (filters.state || filters.city || filters.hubId) {
       const kioskMap = await this.loadKioskMap();
+
       if (filters.state) {
         filtered = this.filterByState(filtered, filters.state, kioskMap);
       }
       if (filters.city) {
         filtered = this.filterByCity(filtered, filters.city, kioskMap);
+      }
+      if (filters.hubId) {
+        filtered = this.filterByHub(filtered, filters.hubId, kioskMap);
       }
     }
 
@@ -495,6 +501,30 @@ export class FirestoreService {
       const kiosk = kioskMap.get(c.kioskId);
       return kiosk?.city === city;
     });
+  }
+
+  private static filterByHub(checkins: CheckIn[], hubId: string, kioskMap: Map<string, Kiosk>): CheckIn[] {
+    console.log(`🏢 Filtering by hub: ${hubId}`);
+
+    // Get kiosks with this hubId
+    const kiosksWithHub = Array.from(kioskMap.values()).filter(k => k.hubId === hubId);
+    console.log(`  - Found ${kiosksWithHub.length} kiosks with hubId '${hubId}'`);
+
+    if (kiosksWithHub.length === 0) {
+      console.warn(`⚠️ No kiosks found with hubId '${hubId}'. Filter will return 0 results.`);
+      console.warn(`  Possible issues:`);
+      console.warn(`  1. Kiosks might not have hubId assigned in database`);
+      console.warn(`  2. Hub ID might be incorrect (check spelling/case)`);
+      return [];
+    }
+
+    const filtered = checkins.filter(c => {
+      const kiosk = kioskMap.get(c.kioskId);
+      return kiosk?.hubId === hubId;
+    });
+
+    console.log(`  - Filtered ${checkins.length} → ${filtered.length} check-ins`);
+    return filtered;
   }
 
   /**
@@ -914,6 +944,7 @@ export class FirestoreService {
           ...kioskData,
           updatedAt: serverTimestamp()
         });
+        this.invalidateKioskCache(); // Invalidate cache
         return existingKiosk.documentId;
       } else {
         // Create new
@@ -924,6 +955,7 @@ export class FirestoreService {
           updatedAt: serverTimestamp()
         });
         console.log('Kiosk created with document ID:', docRef.id);
+        this.invalidateKioskCache(); // Invalidate cache
         return docRef.id;
       }
     } catch (error) {
@@ -1002,8 +1034,9 @@ export class FirestoreService {
       }
 
       await batch.commit();
+      this.invalidateKioskCache(); // Invalidate cache after batch operations
       console.log(`Batch import completed: ${successCount} successful, ${errors.length} errors`);
-      
+
       return { success: successCount, errors };
     } catch (error) {
       console.error('Error in batch import:', error);
