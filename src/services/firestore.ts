@@ -197,6 +197,16 @@ export class FirestoreService {
 
     console.log(`📊 Query type: ${queryType}, limit: ${queryLimit}`);
 
+    // Log date range for debugging timezone issues
+    if (filters?.dateRange) {
+      console.log(`📅 Date range filter:`, {
+        start: filters.dateRange.start?.toISOString(),
+        startLocal: filters.dateRange.start?.toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
+        end: filters.dateRange.end?.toISOString(),
+        endLocal: filters.dateRange.end?.toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })
+      });
+    }
+
     // Execute query
     const q = query(collection(db, 'checkins'), ...constraints);
     const querySnapshot = await getDocs(q);
@@ -206,6 +216,17 @@ export class FirestoreService {
       id: doc.id,
       ...doc.data()
     })) as CheckIn[];
+
+    // Log timestamps of first few check-ins for debugging
+    if (data.length > 0 && filters?.dateRange) {
+      console.log(`🕐 First 5 check-in timestamps:`, data.slice(0, 5).map(c => ({
+        userName: c.userName,
+        type: c.type,
+        timestampUTC: c.timestamp.toDate().toISOString(),
+        timestampLocal: c.timestamp.toDate().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
+        productType: c.productType
+      })));
+    }
 
     const hasMoreFromQuery = docs.length === queryLimit;
     const lastDocument = docs.length > 0 ? docs[docs.length - 1] : undefined;

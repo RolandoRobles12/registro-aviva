@@ -161,12 +161,16 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
     const startDate = new Date(todayStr + 'T00:00:00');
     const endDate = new Date(todayStr + 'T23:59:59');
 
+    console.log('📅 Set filter to today only:', todayStr);
+    console.log('  Start (UTC):', startDate.toISOString());
+    console.log('  Start (Local):', startDate.toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }));
+    console.log('  End (UTC):', endDate.toISOString());
+    console.log('  End (Local):', endDate.toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }));
+
     setLocalFilters(prev => ({
       ...prev,
       dateRange: { start: startDate, end: endDate }
     }));
-
-    console.log('📅 Set filter to today only:', todayStr);
   };
 
   const hasActiveFilters = Object.values(localFilters).some(value =>
