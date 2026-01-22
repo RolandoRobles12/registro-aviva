@@ -397,10 +397,31 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
       let daysWithLunch = 0; // Only count days where we calculated lunch time
 
       for (const [date, dayCheckIns] of Object.entries(checkInsByDate)) {
-        const entrada = dayCheckIns.find(ci => ci.type === 'entrada');
-        const salida = dayCheckIns.find(ci => ci.type === 'salida');
-        const comida = dayCheckIns.find(ci => ci.type === 'comida');
-        const regresoComida = dayCheckIns.find(ci => ci.type === 'regreso_comida');
+        // Sort check-ins by timestamp to ensure correct pairing
+        const sortedCheckIns = dayCheckIns.sort((a, b) => {
+          const aTime = a.timestamp instanceof Timestamp ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime();
+          const bTime = b.timestamp instanceof Timestamp ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime();
+          return aTime - bTime;
+        });
+
+        const entrada = sortedCheckIns.find(ci => ci.type === 'entrada');
+        const salida = sortedCheckIns.find((ci, idx) => {
+          // Find salida that comes AFTER entrada
+          if (ci.type !== 'salida') return false;
+          if (!entrada) return true; // No entrada, take first salida
+
+          const entradaIdx = sortedCheckIns.indexOf(entrada);
+          return idx > entradaIdx; // Salida must be after entrada
+        });
+        const comida = sortedCheckIns.find(ci => ci.type === 'comida');
+        const regresoComida = sortedCheckIns.find((ci, idx) => {
+          // Find regreso_comida that comes AFTER comida
+          if (ci.type !== 'regreso_comida') return false;
+          if (!comida) return true;
+
+          const comidaIdx = sortedCheckIns.indexOf(comida);
+          return idx > comidaIdx;
+        });
 
         // Calculate work hours - only if salida is AFTER entrada
         if (entrada && salida) {
@@ -418,7 +439,7 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
             totalWorkHours += workMinutes / 60;
             daysWithWorkHours++; // Count this day as having valid work hours
           } else {
-            console.warn(`⚠️ Invalid work hours for ${user.name} on ${date}: salida before entrada`);
+            console.warn(`⚠️ Invalid work hours for ${user.name} on ${date}: salida before entrada (${entradaTime.toLocaleTimeString('es-MX')} -> ${salidaTime.toLocaleTimeString('es-MX')})`);
           }
         }
 
@@ -447,7 +468,7 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
         if (salida && salida.status === 'anticipado') earlyDepartures++;
 
         // Perfect day: all check-ins on time AND has at least entrada+salida
-        const allOnTime = dayCheckIns.every(ci => ci.status === 'a_tiempo');
+        const allOnTime = sortedCheckIns.every(ci => ci.status === 'a_tiempo');
         if (allOnTime && entrada && salida) perfectDays++;
       }
 
@@ -596,8 +617,22 @@ export async function generateMonthlyReport(filters: ReportFilters): Promise<Mon
     for (const [userId, userCheckIns] of Object.entries(checkInsByUser)) {
       const byDate = groupCheckInsByDate(userCheckIns);
       for (const dayCheckIns of Object.values(byDate)) {
-        const entrada = dayCheckIns.find(ci => ci.type === 'entrada');
-        const salida = dayCheckIns.find(ci => ci.type === 'salida');
+        // Sort check-ins by timestamp to ensure correct pairing
+        const sortedCheckIns = dayCheckIns.sort((a, b) => {
+          const aTime = a.timestamp instanceof Timestamp ? a.timestamp.toDate().getTime() : new Date(a.timestamp).getTime();
+          const bTime = b.timestamp instanceof Timestamp ? b.timestamp.toDate().getTime() : new Date(b.timestamp).getTime();
+          return aTime - bTime;
+        });
+
+        const entrada = sortedCheckIns.find(ci => ci.type === 'entrada');
+        const salida = sortedCheckIns.find((ci, idx) => {
+          // Find salida that comes AFTER entrada
+          if (ci.type !== 'salida') return false;
+          if (!entrada) return true;
+
+          const entradaIdx = sortedCheckIns.indexOf(entrada);
+          return idx > entradaIdx;
+        });
 
         if (entrada && salida) {
           const entradaTime = entrada.timestamp instanceof Timestamp
