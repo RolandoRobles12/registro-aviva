@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, AuthContextType } from '../types';
 import { AuthService } from '../services/auth';
+import { JobService } from '../services/jobs';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -38,7 +39,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     const unsubscribe = handleInitialAuth();
-    
+
     // Cleanup function
     return () => {
       if (typeof unsubscribe === 'function') {
@@ -48,6 +49,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     };
   }, []);
+
+  // Initialize background jobs when user is authenticated and is admin
+  useEffect(() => {
+    if (user && (user.role === 'admin' || user.role === 'super_admin')) {
+      console.log('🚀 Starting background jobs for admin user...');
+      JobService.startBackgroundJobs().catch(err => {
+        console.error('Failed to start background jobs:', err);
+      });
+    }
+
+    // Cleanup: stop jobs when user logs out or component unmounts
+    return () => {
+      if (user && (user.role === 'admin' || user.role === 'super_admin')) {
+        JobService.stopBackgroundJobs();
+      }
+    };
+  }, [user]);
 
   const signInWithGoogle = async (): Promise<void> => {
     try {
