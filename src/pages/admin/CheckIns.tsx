@@ -24,6 +24,7 @@ export default function AdminCheckIns() {
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | undefined>();
   const [currentPage, setCurrentPage] = useState(1);
   const [totalLoaded, setTotalLoaded] = useState(0);
+  const [hubFilterWarning, setHubFilterWarning] = useState<string | null>(null);
 
   // ✅ Cargar datos iniciales (kiosks y hubs)
   useEffect(() => {
@@ -42,8 +43,35 @@ export default function AdminCheckIns() {
         setTotalLoaded(0);
         setHasNext(false);
         setError(null);
+        setHubFilterWarning(null);
 
         console.log('🔍 Loading check-ins with filters:', filters);
+
+        // Validar filtro de hub si está activo
+        if (filters.hubId && kiosks.length > 0) {
+          const kiosksWithHub = kiosks.filter(k => k.hubId);
+          const kiosksWithoutHub = kiosks.filter(k => !k.hubId);
+          const kiosksWithTargetHub = kiosks.filter(k => k.hubId === filters.hubId);
+
+          console.log(`🏢 Hub filter validation:`);
+          console.log(`  - Total kiosks: ${kiosks.length}`);
+          console.log(`  - Kiosks with Hub: ${kiosksWithHub.length}`);
+          console.log(`  - Kiosks without Hub: ${kiosksWithoutHub.length}`);
+          console.log(`  - Kiosks with target Hub '${filters.hubId}': ${kiosksWithTargetHub.length}`);
+
+          if (kiosksWithTargetHub.length === 0) {
+            setHubFilterWarning(
+              `⚠️ No se encontraron kioscos asignados al Hub seleccionado. ` +
+              `${kiosksWithoutHub.length} de ${kiosks.length} kioscos no tienen Hub asignado. ` +
+              `El filtro puede no devolver resultados.`
+            );
+          } else if (kiosksWithoutHub.length > kiosks.length * 0.3) {
+            setHubFilterWarning(
+              `⚠️ ${kiosksWithoutHub.length} de ${kiosks.length} kioscos no tienen Hub asignado. ` +
+              `Los check-ins de estos kioscos no aparecerán en los resultados del filtro de Hub.`
+            );
+          }
+        }
 
         const result = await FirestoreService.getCheckIns(filters, 1, 50, undefined);
 
@@ -77,7 +105,7 @@ export default function AdminCheckIns() {
     };
 
     loadData();
-  }, [filters]);
+  }, [filters, kiosks]);
 
   const loadInitialData = async () => {
     try {
@@ -270,6 +298,17 @@ export default function AdminCheckIns() {
             </button>
           </div>
         </Alert>
+      )}
+
+      {/* Hub Filter Warning */}
+      {hubFilterWarning && (
+        <Alert
+          type="warning"
+          title="Advertencia de filtro de Hub"
+          message={hubFilterWarning}
+          dismissible
+          onDismiss={() => setHubFilterWarning(null)}
+        />
       )}
 
       {/* Filters */}

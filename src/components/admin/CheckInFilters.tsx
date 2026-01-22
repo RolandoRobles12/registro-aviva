@@ -14,6 +14,7 @@ interface CheckInFiltersProps {
 export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [] }: CheckInFiltersProps) {
   const [localFilters, setLocalFilters] = useState<Filters>(filters);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [dateWarning, setDateWarning] = useState<string | null>(null);
 
   // Options for dropdowns - con verificación de que los datos existan
   const productTypeOptions = Object.entries(PRODUCT_TYPES || {}).map(([key, label]) => ({
@@ -62,6 +63,9 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
   };
 
   const handleDateRangeChange = (type: 'start' | 'end', value: string) => {
+    // Clear any previous warnings
+    setDateWarning(null);
+
     if (!value) {
       // Si se borra la fecha, eliminar la parte correspondiente
       setLocalFilters(prev => {
@@ -101,16 +105,24 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
       // verificar que la fecha de fin no sea anterior a la de inicio
       if (type === 'end' && newDateRange.start && date < newDateRange.start) {
         console.warn('⚠️ End date cannot be before start date. Adjusting start date.');
+        setDateWarning('La fecha de fin no puede ser anterior a la fecha de inicio. Se ajustó automáticamente la fecha de inicio.');
         // Ajustar la fecha de inicio al mismo día que la fecha de fin
         newDateRange.start = new Date(value + 'T00:00:00');
+
+        // Clear warning after 5 seconds
+        setTimeout(() => setDateWarning(null), 5000);
       }
 
       // Validación: Si se está estableciendo fecha de inicio y ya existe fecha de fin,
       // verificar que la fecha de inicio no sea posterior a la de fin
       if (type === 'start' && newDateRange.end && date > newDateRange.end) {
         console.warn('⚠️ Start date cannot be after end date. Adjusting end date.');
+        setDateWarning('La fecha de inicio no puede ser posterior a la fecha de fin. Se ajustó automáticamente la fecha de fin.');
         // Ajustar la fecha de fin al mismo día que la fecha de inicio
         newDateRange.end = new Date(value + 'T23:59:59');
+
+        // Clear warning after 5 seconds
+        setTimeout(() => setDateWarning(null), 5000);
       }
 
       return { ...prev, dateRange: newDateRange };
@@ -184,6 +196,19 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
         </div>
       </div>
 
+      {/* Date Warning Alert */}
+      {dateWarning && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+          <div className="flex items-start space-x-2">
+            <InformationCircleIcon className="h-5 w-5 text-yellow-500 mt-0.5" />
+            <div className="text-sm">
+              <p className="text-yellow-800 font-medium">Ajuste automático de fechas</p>
+              <p className="text-yellow-600 mt-1">{dateWarning}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filter Priority Info */}
       <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
         <div className="flex items-start space-x-2">
@@ -191,7 +216,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
           <div className="text-sm">
             <p className="text-blue-800 font-medium">Filtro principal optimizado: {getPrimaryFilter()}</p>
             <p className="text-blue-600 mt-1">
-              Para mejor rendimiento, usa primero rango de fechas, luego kiosco específico, 
+              Para mejor rendimiento, usa primero rango de fechas, luego kiosco específico,
               después tipo de producto. Los demás filtros se aplicarán en memoria.
             </p>
           </div>
@@ -330,7 +355,7 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
             )}
             {localFilters.hubId && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                🏢 {hubs.find(h => h.id === localFilters.hubId)?.name}
+                🏢 {hubs.find(h => h.id === localFilters.hubId)?.name || `Hub: ${localFilters.hubId}`}
               </span>
             )}
             {localFilters.kioskId && (
