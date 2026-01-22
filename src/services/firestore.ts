@@ -301,8 +301,10 @@ export class FirestoreService {
 
     // ProductType filter (only if not used as primary)
     if (filters.productType && queryType !== 'productType') {
+      console.log(`📦 Applying product type filter: "${filters.productType}"`);
+      const beforeFilter = filtered.length;
       filtered = this.filterByProductType(filtered, filters.productType);
-      console.log(`📦 Product type filter (${filters.productType}): ${filtered.length} remaining`);
+      console.log(`  - ${beforeFilter} → ${filtered.length} (removed ${beforeFilter - filtered.length})`);
     }
 
     // Status filter (only if not used as primary)
@@ -313,8 +315,34 @@ export class FirestoreService {
 
     // CheckInType filter (only if not used as primary)
     if (filters.checkInType && queryType !== 'checkInType') {
+      console.log(`🚪 Applying check-in type filter: "${filters.checkInType}"`);
+      console.log(`  - Check-ins before filter: ${filtered.length}`);
+
+      // Debug: Show unique type values in current data
+      const uniqueTypes = new Set(filtered.map(c => c.type));
+      console.log(`  - Unique type values found: [${Array.from(uniqueTypes).map(t => `"${t}"`).join(', ')}]`);
+
+      // Debug: Show sample check-ins with their types
+      if (filtered.length > 0) {
+        const samples = filtered.slice(0, 3);
+        console.log(`  - Sample check-ins:`, samples.map(c => ({
+          userName: c.userName,
+          type: c.type,
+          typeMatches: c.type === filters.checkInType,
+          productType: c.productType,
+          timestamp: c.timestamp.toDate().toLocaleString()
+        })));
+      }
+
+      const beforeFilter = filtered.length;
       filtered = this.filterByCheckInType(filtered, filters.checkInType);
-      console.log(`🚪 Check-in type filter (${filters.checkInType}): ${filtered.length} remaining`);
+      console.log(`  - Check-ins after filter: ${filtered.length} (removed ${beforeFilter - filtered.length})`);
+
+      if (filtered.length === 0 && beforeFilter > 0) {
+        console.warn(`⚠️ Filter removed all ${beforeFilter} check-ins!`);
+        console.warn(`  Expected type: "${filters.checkInType}" (${typeof filters.checkInType})`);
+        console.warn(`  Found types: [${Array.from(uniqueTypes).map(t => `"${t}"`).join(', ')}]`);
+      }
     }
 
     // DateRange filter (only if not used as primary)
