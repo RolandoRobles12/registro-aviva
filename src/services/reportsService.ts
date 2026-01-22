@@ -133,9 +133,9 @@ export async function getFilteredCheckIns(filters: ReportFilters): Promise<Check
       orderBy('timestamp', 'desc')
     ];
 
-    // IMPORTANTE: Límite de seguridad para evitar cargar millones de registros
-    // Si necesitas más de 100,000 check-ins en un reporte, considera dividir en rangos más pequeños
-    const MAX_CHECKINS = 100000;
+    // IMPORTANTE: Límite máximo de Firestore es 10,000 documentos por query
+    // Si necesitas más check-ins en un reporte, considera dividir en rangos más pequeños (por semana)
+    const MAX_CHECKINS = 10000;
     constraints.push(limit(MAX_CHECKINS));
 
     const q = query(collection(db, 'checkins'), ...constraints);
