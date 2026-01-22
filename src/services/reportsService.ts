@@ -5,7 +5,8 @@ import {
   where,
   getDocs,
   orderBy,
-  Timestamp
+  Timestamp,
+  limit
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import {
@@ -16,6 +17,20 @@ import {
   AttendanceIssue,
   TimeOffRequest
 } from '../types';
+
+// ============== CACHÉ EN MEMORIA ==============
+// Evita re-cargar usuarios, kiosks y hubs que raramente cambian
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const cache: {
+  users?: CacheEntry<User[]>;
+  kiosks?: CacheEntry<Kiosk[]>;
+  hubs?: CacheEntry<Hub[]>;
+} = {};
 
 export interface ReportFilters {
   startDate: Date;
@@ -102,105 +117,113 @@ export interface MonthlyReportData {
 }
 
 /**
- * Get check-ins with filters - NO INDEXES NEEDED!
+ * Get check-ins with filters - OPTIMIZADO para reducir lecturas de Firestore
  */
 export async function getFilteredCheckIns(filters: ReportFilters): Promise<CheckIn[]> {
   try {
-    console.log('🔍 Fetching ALL check-ins (no index needed)...');
+    const startTime = Date.now();
+    console.log('🚀 [OPTIMIZED] Fetching check-ins with Firestore query filters...');
+    console.log('📅 Date range:', filters.startDate.toISOString(), 'to', filters.endDate.toISOString());
 
-    // IMPORTANTE: La colección se llama 'checkins' (minúsculas)
-    const snapshot = await getDocs(collection(db, 'checkins'));
-    console.log(`📊 Found ${snapshot.docs.length} total check-ins in database`);
+    // ============== QUERY OPTIMIZADA CON FILTROS DE FIRESTORE ==============
+    // Usar where() en Firestore para filtrar ANTES de cargar en memoria
+    const constraints = [
+      where('timestamp', '>=', Timestamp.fromDate(filters.startDate)),
+      where('timestamp', '<=', Timestamp.fromDate(filters.endDate)),
+      orderBy('timestamp', 'desc')
+    ];
+
+    // IMPORTANTE: Límite de seguridad para evitar cargar millones de registros
+    // Si necesitas más de 100,000 check-ins en un reporte, considera dividir en rangos más pequeños
+    const MAX_CHECKINS = 100000;
+    constraints.push(limit(MAX_CHECKINS));
+
+    const q = query(collection(db, 'checkins'), ...constraints);
+    const snapshot = await getDocs(q);
+
+    console.log(`📊 Firestore returned ${snapshot.docs.length} check-ins (filtered by date in DB)`);
+    if (snapshot.docs.length === MAX_CHECKINS) {
+      console.warn(`⚠️ Hit maximum limit of ${MAX_CHECKINS} check-ins. Consider narrowing date range.`);
+    }
 
     let checkIns = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
         ...data,
-        // Ensure timestamp is a Timestamp
         timestamp: data.timestamp instanceof Timestamp ? data.timestamp : Timestamp.fromDate(new Date(data.timestamp))
       } as CheckIn;
     });
 
-    // Log all unique product types in database
-    const allProductTypes = [...new Set(checkIns.map(ci => ci.productType))];
-    console.log('📦 ALL product types in database:', allProductTypes);
+    const initialCount = checkIns.length;
 
-    // Apply ALL filters in memory (no indexes needed!)
-    console.log('🔍 Applying date filter...');
-    checkIns = checkIns.filter(ci => {
-      const ciDate = ci.timestamp instanceof Timestamp ? ci.timestamp.toDate() : new Date(ci.timestamp);
-      return ciDate >= filters.startDate && ciDate <= filters.endDate;
-    });
-    console.log(`📊 After date filter: ${checkIns.length} check-ins`);
+    // ============== FILTROS SECUNDARIOS EN MEMORIA (solo sobre conjunto reducido) ==============
 
-    // Handle hub filter: check-ins don't have hubId, but users do
-    // So we need to get users from those hubs first, then filter by their userIds
+    // Filtros de producto (rápido, solo sobre check-ins ya filtrados por fecha)
+    if (filters.productTypes && filters.productTypes.length > 0) {
+      checkIns = checkIns.filter(ci => filters.productTypes!.includes(ci.productType));
+      console.log(`📦 After product type filter: ${checkIns.length} check-ins`);
+    }
+
+    // Filtros de kiosk (rápido, solo sobre check-ins ya filtrados)
+    if (filters.kioskIds && filters.kioskIds.length > 0) {
+      checkIns = checkIns.filter(ci => filters.kioskIds!.includes(ci.kioskId));
+      console.log(`🏪 After kiosk filter: ${checkIns.length} check-ins`);
+    }
+
+    // Filtro de tipo de check-in
+    if (filters.checkInType) {
+      checkIns = checkIns.filter(ci => ci.type === filters.checkInType);
+      console.log(`📝 After check-in type filter: ${checkIns.length} check-ins`);
+    }
+
+    // Filtro de estado
+    if (filters.status) {
+      checkIns = checkIns.filter(ci => ci.status === filters.status);
+      console.log(`✅ After status filter: ${checkIns.length} check-ins`);
+    }
+
+    // Filtros de usuario/hub (requiere cargar usuarios, usa caché)
     let allowedUserIds: string[] | undefined = filters.userIds;
 
     if (filters.hubIds && filters.hubIds.length > 0) {
       console.log('🔍 Filtering by hubs:', filters.hubIds);
-      const allUsers = await getAllUsers();
+      const allUsers = await getAllUsers(); // Usa caché
       const usersInHubs = allUsers.filter(u => u.hubId && filters.hubIds!.includes(u.hubId));
       console.log(`📊 Found ${usersInHubs.length} users in selected hubs`);
 
       const hubUserIds = usersInHubs.map(u => u.id);
 
-      // If there were already userIds in filters, intersect them
       if (allowedUserIds && allowedUserIds.length > 0) {
         allowedUserIds = allowedUserIds.filter(id => hubUserIds.includes(id));
       } else {
         allowedUserIds = hubUserIds;
       }
-
-      console.log(`📊 Total allowed userIds after hub filter: ${allowedUserIds.length}`);
     }
 
     if (allowedUserIds && allowedUserIds.length > 0) {
       checkIns = checkIns.filter(ci => allowedUserIds!.includes(ci.userId));
-      console.log(`🔍 After user/hub filter: ${checkIns.length} check-ins`);
+      console.log(`👥 After user/hub filter: ${checkIns.length} check-ins`);
     }
 
-    if (filters.kioskIds && filters.kioskIds.length > 0) {
-      checkIns = checkIns.filter(ci => filters.kioskIds!.includes(ci.kioskId));
-      console.log(`🔍 After kiosk filter: ${checkIns.length} check-ins`);
+    // Filtro por supervisor (requiere cargar usuarios)
+    if (filters.supervisorIds && filters.supervisorIds.length > 0) {
+      const allUsers = await getAllUsers(); // Usa caché
+      const supervisedUserIds = allUsers
+        .filter(u => u.supervisorId && filters.supervisorIds!.includes(u.supervisorId))
+        .map(u => u.id);
+
+      checkIns = checkIns.filter(ci => supervisedUserIds.includes(ci.userId));
+      console.log(`👨‍💼 After supervisor filter: ${checkIns.length} check-ins`);
     }
 
-    if (filters.productTypes && filters.productTypes.length > 0) {
-      console.log('🔍 Filtering by product types:', filters.productTypes);
+    // Ya vienen ordenados por timestamp desc de la query
+    const endTime = Date.now();
+    const elapsed = ((endTime - startTime) / 1000).toFixed(2);
 
-      // Log unique product types in current check-ins before filtering
-      const uniqueProducts = [...new Set(checkIns.map(ci => ci.productType))];
-      console.log('📦 Product types found in check-ins before filter:', uniqueProducts);
+    console.log(`✅ [OPTIMIZED] Final filtered check-ins: ${checkIns.length} (${initialCount} → ${checkIns.length})`);
+    console.log(`⏱️ Query completed in ${elapsed}s`);
 
-      checkIns = checkIns.filter(ci => filters.productTypes!.includes(ci.productType));
-      console.log(`🔍 After product type filter: ${checkIns.length} check-ins`);
-
-      if (checkIns.length === 0) {
-        console.warn('⚠️ NO check-ins match the selected product types!');
-        console.warn('Selected:', filters.productTypes);
-        console.warn('Available:', uniqueProducts);
-      }
-    }
-
-    if (filters.checkInType) {
-      checkIns = checkIns.filter(ci => ci.type === filters.checkInType);
-      console.log(`🔍 After check-in type filter: ${checkIns.length} check-ins`);
-    }
-
-    if (filters.status) {
-      checkIns = checkIns.filter(ci => ci.status === filters.status);
-      console.log(`🔍 After status filter: ${checkIns.length} check-ins`);
-    }
-
-    // Sort by timestamp descending
-    checkIns.sort((a, b) => {
-      const aDate = a.timestamp instanceof Timestamp ? a.timestamp.toDate() : new Date(a.timestamp);
-      const bDate = b.timestamp instanceof Timestamp ? b.timestamp.toDate() : new Date(b.timestamp);
-      return bDate.getTime() - aDate.getTime();
-    });
-
-    console.log(`✅ Final filtered check-ins: ${checkIns.length}`);
     return checkIns;
   } catch (error) {
     console.error('❌ Error getting filtered check-ins:', error);
@@ -209,15 +232,30 @@ export async function getFilteredCheckIns(filters: ReportFilters): Promise<Check
 }
 
 /**
- * Get all users
+ * Get all users (CON CACHÉ)
  */
 export async function getAllUsers(): Promise<User[]> {
   try {
+    const now = Date.now();
+
+    // Verificar si hay datos en caché válidos
+    if (cache.users && (now - cache.users.timestamp) < CACHE_TTL) {
+      console.log('📦 Using cached users');
+      return cache.users.data;
+    }
+
+    console.log('🔄 Loading users from Firestore...');
     const snapshot = await getDocs(collection(db, 'users'));
-    return snapshot.docs.map(doc => ({
+    const users = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     } as User));
+
+    // Guardar en caché
+    cache.users = { data: users, timestamp: now };
+    console.log(`✅ Loaded and cached ${users.length} users`);
+
+    return users;
   } catch (error) {
     console.error('Error getting users:', error);
     throw error;
@@ -225,15 +263,30 @@ export async function getAllUsers(): Promise<User[]> {
 }
 
 /**
- * Get all kiosks
+ * Get all kiosks (CON CACHÉ)
  */
 export async function getAllKiosks(): Promise<Kiosk[]> {
   try {
+    const now = Date.now();
+
+    // Verificar si hay datos en caché válidos
+    if (cache.kiosks && (now - cache.kiosks.timestamp) < CACHE_TTL) {
+      console.log('📦 Using cached kiosks');
+      return cache.kiosks.data;
+    }
+
+    console.log('🔄 Loading kiosks from Firestore...');
     const snapshot = await getDocs(collection(db, 'kiosks'));
-    return snapshot.docs.map(doc => ({
+    const kiosks = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     } as Kiosk));
+
+    // Guardar en caché
+    cache.kiosks = { data: kiosks, timestamp: now };
+    console.log(`✅ Loaded and cached ${kiosks.length} kiosks`);
+
+    return kiosks;
   } catch (error) {
     console.error('Error getting kiosks:', error);
     throw error;
@@ -241,15 +294,30 @@ export async function getAllKiosks(): Promise<Kiosk[]> {
 }
 
 /**
- * Get all hubs
+ * Get all hubs (CON CACHÉ)
  */
 export async function getAllHubs(): Promise<Hub[]> {
   try {
+    const now = Date.now();
+
+    // Verificar si hay datos en caché válidos
+    if (cache.hubs && (now - cache.hubs.timestamp) < CACHE_TTL) {
+      console.log('📦 Using cached hubs');
+      return cache.hubs.data;
+    }
+
+    console.log('🔄 Loading hubs from Firestore...');
     const snapshot = await getDocs(collection(db, 'hubs'));
-    return snapshot.docs.map(doc => ({
+    const hubs = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     } as Hub));
+
+    // Guardar en caché
+    cache.hubs = { data: hubs, timestamp: now };
+    console.log(`✅ Loaded and cached ${hubs.length} hubs`);
+
+    return hubs;
   } catch (error) {
     console.error('Error getting hubs:', error);
     throw error;
@@ -257,39 +325,34 @@ export async function getAllHubs(): Promise<Hub[]> {
 }
 
 /**
- * Generate Attendance Report
+ * Limpiar caché manualmente (útil si se actualizan usuarios/kiosks/hubs)
+ */
+export function clearReportsCache(): void {
+  cache.users = undefined;
+  cache.kiosks = undefined;
+  cache.hubs = undefined;
+  console.log('🗑️ Reports cache cleared');
+}
+
+/**
+ * Generate Attendance Report (OPTIMIZADO)
  */
 export async function generateAttendanceReport(filters: ReportFilters): Promise<AttendanceReportData[]> {
   try {
-    console.log('📊 Generating attendance report...');
+    console.log('📊 [OPTIMIZED] Generating attendance report...');
     const checkIns = await getFilteredCheckIns(filters);
-    const users = await getAllUsers();
 
-    const reportData: AttendanceReportData[] = [];
-
-    // Get unique user IDs from filtered check-ins
+    // Solo cargar usuarios si es necesario
     const userIdsFromCheckIns = new Set(checkIns.map(ci => ci.userId));
     console.log(`👥 Found ${userIdsFromCheckIns.size} unique users in filtered check-ins`);
 
-    // Filter users based on criteria (but NOT by productType - that's in check-ins)
-    let relevantUsers = users.filter(u => u.status === 'active' && userIdsFromCheckIns.has(u.id));
+    // Cargar SOLO usuarios activos (usa caché)
+    const allUsers = await getAllUsers();
+    const relevantUsers = allUsers.filter(u =>
+      u.status === 'active' && userIdsFromCheckIns.has(u.id)
+    );
 
-    if (filters.userIds && filters.userIds.length > 0) {
-      relevantUsers = relevantUsers.filter(u => filters.userIds!.includes(u.id));
-    }
-
-    if (filters.hubIds && filters.hubIds.length > 0) {
-      relevantUsers = relevantUsers.filter(u => u.hubId && filters.hubIds!.includes(u.hubId));
-    }
-
-    if (filters.supervisorIds && filters.supervisorIds.length > 0) {
-      relevantUsers = relevantUsers.filter(u => u.supervisorId && filters.supervisorIds!.includes(u.supervisorId));
-    }
-
-    // NOTE: productType filter already applied to check-ins
-    // Users can work on different products, so we don't filter users by productType
-
-    console.log(`👥 Processing ${relevantUsers.length} users`);
+    console.log(`👥 Processing ${relevantUsers.length} active users (from ${allUsers.length} total)`);
 
     for (const user of relevantUsers) {
       const userCheckIns = checkIns.filter(ci => ci.userId === user.id);
@@ -361,24 +424,25 @@ export async function generateAttendanceReport(filters: ReportFilters): Promise<
 }
 
 /**
- * Generate Productivity Report
+ * Generate Productivity Report (OPTIMIZADO)
  */
 export async function generateProductivityReport(filters: ReportFilters): Promise<ProductivityReportData[]> {
   try {
+    console.log('📊 [OPTIMIZED] Generating productivity report...');
     const checkIns = await getFilteredCheckIns(filters);
-    const users = await getAllUsers();
 
     const reportData: ProductivityReportData[] = [];
 
     // Get unique user IDs from filtered check-ins
     const userIdsFromCheckIns = new Set(checkIns.map(ci => ci.userId));
 
-    // Filter users: must be in filtered check-ins AND optionally match other filters
-    let relevantUsers = users.filter(u => u.status === 'active' && userIdsFromCheckIns.has(u.id));
+    // Cargar SOLO usuarios activos (usa caché)
+    const allUsers = await getAllUsers();
+    const relevantUsers = allUsers.filter(u =>
+      u.status === 'active' && userIdsFromCheckIns.has(u.id)
+    );
 
-    if (filters.userIds && filters.userIds.length > 0) {
-      relevantUsers = relevantUsers.filter(u => filters.userIds!.includes(u.id));
-    }
+    console.log(`👥 Processing ${relevantUsers.length} users for productivity`);
 
     for (const user of relevantUsers) {
       const userCheckIns = checkIns.filter(ci => ci.userId === user.id);
@@ -514,12 +578,13 @@ export async function generateProductivityReport(filters: ReportFilters): Promis
 }
 
 /**
- * Generate Location Report
+ * Generate Location Report (OPTIMIZADO)
  */
 export async function generateLocationReport(filters: ReportFilters): Promise<LocationReportData[]> {
   try {
+    console.log('📊 [OPTIMIZED] Generating location report...');
     const checkIns = await getFilteredCheckIns(filters);
-    const kiosks = await getAllKiosks();
+    const kiosks = await getAllKiosks(); // Usa caché
 
     const reportData: LocationReportData[] = [];
 
@@ -564,13 +629,14 @@ export async function generateLocationReport(filters: ReportFilters): Promise<Lo
 }
 
 /**
- * Generate Team Report
+ * Generate Team Report (OPTIMIZADO)
  */
 export async function generateTeamReport(filters: ReportFilters): Promise<TeamReportData[]> {
   try {
+    console.log('📊 [OPTIMIZED] Generating team report...');
     const checkIns = await getFilteredCheckIns(filters);
-    const users = await getAllUsers();
-    const hubs = await getAllHubs();
+    const users = await getAllUsers(); // Usa caché
+    const hubs = await getAllHubs(); // Usa caché
 
     const reportData: TeamReportData[] = [];
 
@@ -617,12 +683,13 @@ export async function generateTeamReport(filters: ReportFilters): Promise<TeamRe
 }
 
 /**
- * Generate Monthly Report
+ * Generate Monthly Report (OPTIMIZADO)
  */
 export async function generateMonthlyReport(filters: ReportFilters): Promise<MonthlyReportData> {
   try {
+    console.log('📊 [OPTIMIZED] Generating monthly report...');
     const checkIns = await getFilteredCheckIns(filters);
-    const users = await getAllUsers();
+    const users = await getAllUsers(); // Usa caché
     const activeUsers = users.filter(u => u.status === 'active');
 
     const month = filters.startDate.toLocaleDateString('es-MX', { month: 'long' });
