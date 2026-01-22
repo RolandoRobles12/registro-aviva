@@ -382,7 +382,8 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
           <div className="flex flex-wrap gap-2">
             {localFilters.dateRange?.start && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                📅 {formatDateForInput(localFilters.dateRange.start)} - {formatDateForInput(localFilters.dateRange.end)}
+                📅 {formatDateForInput(localFilters.dateRange.start)}
+                {localFilters.dateRange.end && ` → ${formatDateForInput(localFilters.dateRange.end)}`}
               </span>
             )}
             {localFilters.hubId && (
@@ -392,22 +393,37 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
             )}
             {localFilters.kioskId && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                🏪 {kiosks.find(k => k.id === localFilters.kioskId)?.name}
+                🏪 {kiosks.find(k => k.id === localFilters.kioskId)?.name || localFilters.kioskId}
               </span>
             )}
             {localFilters.productType && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                📦 {PRODUCT_TYPES[localFilters.productType as keyof typeof PRODUCT_TYPES]}
+                📦 {PRODUCT_TYPES[localFilters.productType as keyof typeof PRODUCT_TYPES] || localFilters.productType}
+              </span>
+            )}
+            {localFilters.checkInType && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-cyan-100 text-cyan-800">
+                ⏰ {CHECK_IN_TYPES[localFilters.checkInType as keyof typeof CHECK_IN_TYPES] || localFilters.checkInType}
               </span>
             )}
             {localFilters.status && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                📋 {CHECK_IN_STATUS[localFilters.status as keyof typeof CHECK_IN_STATUS]}
+                📋 {CHECK_IN_STATUS[localFilters.status as keyof typeof CHECK_IN_STATUS] || localFilters.status}
               </span>
             )}
             {localFilters.userName && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                 👤 {localFilters.userName}
+              </span>
+            )}
+            {localFilters.state && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                🗺️ {localFilters.state}
+              </span>
+            )}
+            {localFilters.city && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-pink-100 text-pink-800">
+                🏙️ {localFilters.city}
               </span>
             )}
           </div>
