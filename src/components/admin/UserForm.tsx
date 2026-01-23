@@ -2,8 +2,8 @@ import React from 'react';
 import { useForm } from '../../hooks';
 import { Button, Input, Select, Alert } from '../ui';
 import { userSchema } from '../../utils/validators';
-import { USER_ROLES } from '../../utils/constants';
-import { User, UserRole } from '../../types';
+import { USER_ROLES, PRODUCT_TYPES } from '../../utils/constants';
+import { User, UserRole, ProductType } from '../../types';
 
 interface UserFormProps {
   user?: User | null;
@@ -54,6 +54,14 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
   const statusOptions = [
     { value: 'active', label: 'Activo' },
     { value: 'inactive', label: 'Inactivo' }
+  ];
+
+  const productTypeOptions = [
+    { value: '', label: 'Sin asignar' },
+    ...Object.entries(PRODUCT_TYPES).map(([key, label]) => ({
+      value: key,
+      label
+    }))
   ];
 
   const handleFormSubmit = handleSubmit(async (formData) => {
@@ -115,6 +123,18 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
           options={statusOptions}
           error={errors.status}
           required
+        />
+      </div>
+
+      {/* Product Type */}
+      <div className="grid grid-cols-1 gap-4">
+        <Select
+          label="Tipo de Producto"
+          value={values.productType || ''}
+          onChange={(e) => setValue('productType', (e.target.value || undefined) as ProductType)}
+          options={productTypeOptions}
+          error={errors.productType}
+          helpText="Requerido para detección de faltas automática. Asigna el producto/departamento del usuario."
         />
       </div>
 
