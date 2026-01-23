@@ -29,6 +29,23 @@ export class AttendanceService {
     today.setHours(0, 0, 0, 0);
 
     try {
+      // ✅ OPTIMIZACIÓN: Obtener configuraciones una sola vez antes del bucle
+      const globalConfig = await FirestoreService.getSystemConfig('global');
+      const productConfigs = new Map<ProductType, any>();
+
+      // Pre-cargar configuraciones de todos los productos
+      const productTypes: ProductType[] = ['BA', 'Aviva_Contigo', 'Casa_Marchand', 'Construrama', 'Disensa'];
+      for (const productType of productTypes) {
+        try {
+          const config = await FirestoreService.getSystemConfig(productType);
+          if (config) {
+            productConfigs.set(productType, config);
+          }
+        } catch (error) {
+          console.warn(`Could not load config for ${productType}:`, error);
+        }
+      }
+
       // Get all active users with assigned kiosks (exclude admins)
       const usersSnapshot = await getDocs(
         query(
@@ -45,18 +62,14 @@ export class AttendanceService {
 
         // Skip users without assigned product type
         if (!user.productType) continue;
-        
+
         // Check if today is a work day for this product
         const isWorkDay = await ScheduleService.isWorkDay(user.productType);
         if (!isWorkDay) continue;
-        
-        // ✅ OBTENER CONFIGURACIÓN DINÁMICA (no constantes)
-        const globalConfig = await FirestoreService.getSystemConfig('global');
-        const productConfig = await FirestoreService.getSystemConfig(user.productType);
-        
-        // Usar configuración específica del producto o global como fallback
-        const config = productConfig || globalConfig;
-        
+
+        // ✅ USAR CONFIGURACIÓN PRE-CARGADA (no hacer llamadas en el bucle)
+        const config = productConfigs.get(user.productType) || globalConfig;
+
         if (!config) {
           console.warn(`No config found for product ${user.productType}`);
           continue;
@@ -175,9 +188,8 @@ export class AttendanceService {
             createdAt: serverTimestamp()
           });
           issue.id = docRef.id;
-          
+
           // ✅ NUEVA: Enviar notificaciones si está configurado
-          const globalConfig = await FirestoreService.getSystemConfig('global');
           if (globalConfig?.notificationRules?.notifyOnAbsence) {
             await this.sendAbsenceNotification(issue);
           }
