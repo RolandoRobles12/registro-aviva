@@ -13,7 +13,8 @@
     "deploy": "npm run build && firebase deploy",
     "deploy:hosting": "npm run build && firebase deploy --only hosting",
     "firebase:emulators": "firebase emulators:start",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "assign-products": "tsx scripts/assign-product-types.ts"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.17",
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",
+    "@types/node": "^25.0.10",
     "@types/papaparse": "^5.3.14",
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
@@ -46,9 +48,11 @@
     "eslint": "^8.53.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.4",
+    "firebase-admin": "^13.6.0",
     "firebase-tools": "^12.8.1",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.3.5",
+    "tsx": "^4.21.0",
     "typescript": "^5.2.2",
     "vite": "^4.5.0"
   },

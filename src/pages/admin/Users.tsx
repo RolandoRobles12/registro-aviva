@@ -6,7 +6,8 @@ import { UserForm } from '../../components/admin/UserForm';
 import { UserFilters } from '../../components/admin/UserFilters';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
 import { User } from '../../types';
-import { PlusIcon, UserPlusIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, UserPlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { assignProductTypesFromCheckIns, getUsersWithoutProduct } from '../../services/userMigration';
 
 export default function AdminUsers() {
   const [users, setUsers] = useState<User[]>([]);
@@ -16,10 +17,23 @@ export default function AdminUsers() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; userName: string } | null>(null);
+  const [usersWithoutProduct, setUsersWithoutProduct] = useState(0);
 
   useEffect(() => {
     loadUsers();
+    checkUsersWithoutProduct();
   }, []);
+
+  const checkUsersWithoutProduct = async () => {
+    try {
+      const stats = await getUsersWithoutProduct();
+      setUsersWithoutProduct(stats.total);
+    } catch (error) {
+      console.error('Error checking users without product:', error);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -128,7 +142,7 @@ export default function AdminUsers() {
     let filtered = [...users];
 
     if (filters.name) {
-      filtered = filtered.filter(user => 
+      filtered = filtered.filter(user =>
         user.name.toLowerCase().includes(filters.name.toLowerCase()) ||
         user.email.toLowerCase().includes(filters.name.toLowerCase())
       );
@@ -149,6 +163,56 @@ export default function AdminUsers() {
     setFilteredUsers(filtered);
   };
 
+  const handleAssignProducts = async () => {
+    if (!confirm(
+      `¿Deseas asignar automáticamente el tipo de producto a ${usersWithoutProduct} usuarios basándote en su último check-in?\n\n` +
+      'Esta acción actualizará los usuarios que no tienen producto asignado.'
+    )) {
+      return;
+    }
+
+    try {
+      setMigrating(true);
+      setError(null);
+
+      const result = await assignProductTypesFromCheckIns(
+        (current, total, userName) => {
+          setMigrationProgress({ current, total, userName });
+        }
+      );
+
+      setMigrationProgress(null);
+
+      if (result.success > 0) {
+        setSuccess(
+          `✅ Asignación completada:\n` +
+          `• ${result.success} usuarios actualizados\n` +
+          `• ${result.noCheckIns} usuarios sin check-ins\n` +
+          `• ${result.errors} errores`
+        );
+
+        // Recargar usuarios
+        await loadUsers();
+        await checkUsersWithoutProduct();
+      } else if (result.total === 0) {
+        setSuccess('Todos los usuarios activos ya tienen producto asignado');
+      } else {
+        setError(
+          `No se pudieron asignar productos:\n` +
+          `• ${result.noCheckIns} usuarios sin check-ins\n` +
+          `• ${result.errors} errores`
+        );
+      }
+
+      setTimeout(() => setSuccess(null), 5000);
+    } catch (error) {
+      console.error('Error assigning products:', error);
+      setError('Error asignando productos automáticamente');
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -163,6 +227,22 @@ export default function AdminUsers() {
             </p>
           </div>
           <div className="flex items-center space-x-3">
+            {usersWithoutProduct > 0 && (
+              <Button
+                variant="secondary"
+                onClick={handleAssignProducts}
+                leftIcon={<ArrowPathIcon className="h-4 w-4" />}
+                loading={migrating}
+                disabled={migrating}
+              >
+                {migrating
+                  ? migrationProgress
+                    ? `Asignando ${migrationProgress.current}/${migrationProgress.total}...`
+                    : 'Asignando productos...'
+                  : `Asignar Productos (${usersWithoutProduct})`
+                }
+              </Button>
+            )}
             <Button
               variant="primary"
               onClick={handleAdd}
