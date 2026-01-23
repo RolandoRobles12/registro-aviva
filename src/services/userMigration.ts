@@ -69,13 +69,11 @@ export async function assignProductTypesFromCheckIns(
       }
 
       try {
-        // Buscar el último check-in del usuario
+        // Buscar todos los check-ins del usuario
         const checkInsRef = collection(db, 'checkins');
         const q = query(
           checkInsRef,
-          where('userId', '==', user.id),
-          orderBy('timestamp', 'desc'),
-          limit(1)
+          where('userId', '==', user.id)
         );
 
         const checkInsSnapshot = await getDocs(q);
@@ -90,8 +88,15 @@ export async function assignProductTypesFromCheckIns(
           continue;
         }
 
-        const lastCheckIn = checkInsSnapshot.docs[0].data() as CheckIn;
-        const productType = lastCheckIn.productType;
+        // Ordenar en memoria por timestamp y obtener el más reciente
+        const checkIns = checkInsSnapshot.docs.map(doc => doc.data() as CheckIn);
+        const lastCheckIn = checkIns.sort((a, b) => {
+          const timeA = a.timestamp?.toMillis() || 0;
+          const timeB = b.timestamp?.toMillis() || 0;
+          return timeB - timeA; // Más reciente primero
+        })[0];
+
+        const productType = lastCheckIn?.productType;
 
         if (!productType) {
           errorCount++;
