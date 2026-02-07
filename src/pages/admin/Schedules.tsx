@@ -397,6 +397,7 @@ export default function AdminSchedules() {
                 <ul className="space-y-1">
                   <li><strong>Bodega Aurrera:</strong> 07:00-19:00 (todos los días)</li>
                   <li><strong>Aviva Contigo:</strong> 08:00-18:00 (lun-sáb)</li>
+                  <li><strong>Aviva Tu Negocio:</strong> 08:00-18:00 (lun-sáb)</li>
                   <li><strong>Casa Marchand:</strong> 09:00-18:00 (lun-vie)</li>
                   <li><strong>Construrama:</strong> 08:00-17:00 (lun-sáb)</li>
                   <li><strong>Disensa:</strong> 08:00-18:00 (lun-sáb)</li>

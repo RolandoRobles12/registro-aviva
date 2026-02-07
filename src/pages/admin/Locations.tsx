@@ -246,7 +246,7 @@ export default function AdminLocations() {
               </code>
               <ul className="mt-2 list-disc list-inside space-y-1">
                 <li><strong>id:</strong> Identificador único para el kiosco (ej: 0001, 0002)</li>
-                <li><strong>type:</strong> Debe ser "BA", "Aviva_Contigo", "Casa_Marchand", "Construrama" o "Disensa"</li>
+                <li><strong>type:</strong> Debe ser "BA", "Aviva_Contigo", "Aviva_Tu_Negocio", "Casa_Marchand", "Construrama" o "Disensa"</li>
                 <li><strong>active:</strong> "true" o "false"</li>
                 <li><strong>radiusOverride:</strong> Un número (ej: 200) o dejar en blanco para usar el radio por defecto</li>
               </ul>

@@ -149,6 +149,7 @@ export default function ReportFiltersComponent({ onFilterChange, initialFilters,
   const productTypes = [
     { value: 'BA', label: 'BA', color: 'blue' },
     { value: 'Aviva_Contigo', label: 'Aviva Contigo', color: 'purple' },
+    { value: 'Aviva_Tu_Negocio', label: 'Aviva Tu Negocio', color: 'teal' },
     { value: 'Casa_Marchand', label: 'Casa Marchand', color: 'green' },
     { value: 'Construrama', label: 'Construrama', color: 'orange' },
     { value: 'Disensa', label: 'Disensa', color: 'red' }

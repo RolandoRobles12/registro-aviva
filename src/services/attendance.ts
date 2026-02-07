@@ -429,7 +429,7 @@ export class AttendanceService {
 
       console.log('🏢 Calculando estadísticas por departamento...');
 
-      const productTypes: ProductType[] = ['BA', 'Aviva_Contigo', 'Casa_Marchand', 'Construrama', 'Disensa'];
+      const productTypes: ProductType[] = ['BA', 'Aviva_Contigo', 'Aviva_Tu_Negocio', 'Casa_Marchand', 'Construrama', 'Disensa'];
       const stats = [];
 
       for (const productType of productTypes) {
@@ -723,7 +723,7 @@ export class AttendanceService {
       }
 
       // 2. Verificar horarios configurados
-      const productTypes: ProductType[] = ['BA', 'Aviva_Contigo', 'Casa_Marchand', 'Construrama', 'Disensa'];
+      const productTypes: ProductType[] = ['BA', 'Aviva_Contigo', 'Aviva_Tu_Negocio', 'Casa_Marchand', 'Construrama', 'Disensa'];
       const schedulesConfigured: string[] = [];
 
       for (const productType of productTypes) {

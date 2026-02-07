@@ -30,7 +30,7 @@ export const kioskSchema = z.object({
   name: z.string().min(1, 'Nombre es requerido'),
   city: z.string().min(1, 'Ciudad es requerida'),
   state: z.string().min(1, 'Estado es requerido'),
-  productType: z.enum(['BA', 'Aviva_Contigo', 'Casa_Marchand', 'Construrama', 'Disensa']),
+  productType: z.enum(['BA', 'Aviva_Contigo', 'Aviva_Tu_Negocio', 'Casa_Marchand', 'Construrama', 'Disensa']),
   coordinates: z.object({
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180)
