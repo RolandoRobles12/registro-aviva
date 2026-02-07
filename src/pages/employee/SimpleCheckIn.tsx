@@ -334,8 +334,11 @@ export default function SimpleCheckIn() {
       );
 
       // Create check-in with the photo URL
+      const selectedKioskData = filteredKiosks.find(k => k.id === selectedKiosk);
       const formData: CheckInFormData = {
         kioskId: selectedKiosk,
+        kioskName: selectedKioskData?.name || '',
+        productType: selectedProduct as any,
         type: checkInType as any,
         notes: notes || undefined
       };
