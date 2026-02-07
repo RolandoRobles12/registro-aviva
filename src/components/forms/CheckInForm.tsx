@@ -65,9 +65,11 @@ export function CheckInForm({ kiosks, onSubmit, loading = false, disabled = fals
   }));
 
   // Filter kiosks based on product type selection
+  // Aviva Tu Negocio shares the same physical kiosks as Aviva Contigo
   const [selectedProductType, setSelectedProductType] = useState('');
-  const filteredKiosks = selectedProductType 
-    ? kiosks.filter(k => k.productType === selectedProductType)
+  const filteredKiosks = selectedProductType
+    ? kiosks.filter(k => k.productType === selectedProductType ||
+        (selectedProductType === 'Aviva_Tu_Negocio' && k.productType === 'Aviva_Contigo'))
     : [];
 
   const kioskOptions = filteredKiosks.map(kiosk => ({

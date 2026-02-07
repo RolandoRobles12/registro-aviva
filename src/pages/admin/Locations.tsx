@@ -1,13 +1,13 @@
 // src/pages/admin/Locations.tsx - Versión corregida
 import React, { useState, useEffect } from 'react';
-import { collection, doc as firestoreDoc, getDocs, query, orderBy, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { LocationsTable } from '../../components/admin/LocationsTable';
 import { LocationForm } from '../../components/admin/LocationForm';
 import { ImportLocationsModal } from '../../components/admin/ImportLocationsModal';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
 import { Kiosk } from '../../types';
-import { PlusIcon, ArrowUpTrayIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
 
 // Funciones locales para manejar kioscos
 const saveKiosk = async (kioskData: Omit<Kiosk, 'createdAt' | 'updatedAt'>): Promise<string> => {
@@ -89,7 +89,6 @@ export default function AdminLocations() {
   const [showImport, setShowImport] = useState(false);
   const [editingKiosk, setEditingKiosk] = useState<Kiosk | null>(null);
   const [saving, setSaving] = useState(false);
-  const [duplicating, setDuplicating] = useState(false);
 
   useEffect(() => {
     loadKiosks();
@@ -159,93 +158,6 @@ export default function AdminLocations() {
     setError(null);
   };
 
-  // Duplicate Aviva Contigo kiosks as Aviva Tu Negocio
-  const handleDuplicateForTuNegocio = async () => {
-    const avivaContigoKiosks = kiosks.filter(k => k.productType === 'Aviva_Contigo');
-    const existingTuNegocio = kiosks.filter(k => k.productType === 'Aviva_Tu_Negocio');
-
-    if (avivaContigoKiosks.length === 0) {
-      setError('No hay kioscos de Aviva Contigo para duplicar');
-      return;
-    }
-
-    if (existingTuNegocio.length > 0) {
-      setError(`Ya existen ${existingTuNegocio.length} kioscos de Aviva Tu Negocio. Elimínalos primero si deseas volver a duplicar.`);
-      return;
-    }
-
-    if (!window.confirm(
-      `Se crearán ${avivaContigoKiosks.length} kioscos de Aviva Tu Negocio duplicando los de Aviva Contigo. ¿Continuar?`
-    )) {
-      return;
-    }
-
-    try {
-      setDuplicating(true);
-      setError(null);
-
-      // Find max existing ID
-      const allIds = kiosks
-        .map(k => parseInt(k.id, 10))
-        .filter(id => !isNaN(id));
-      let nextId = Math.max(...allIds, 0) + 1;
-
-      // Create in batches of 400 (Firestore limit is 500)
-      const BATCH_SIZE = 400;
-      let batch = writeBatch(db);
-      let batchCount = 0;
-      let totalCreated = 0;
-
-      for (const kiosk of avivaContigoKiosks) {
-        const newId = nextId.toString().padStart(4, '0');
-        nextId++;
-
-        const newKiosk: any = {
-          id: newId,
-          name: kiosk.name,
-          city: kiosk.city,
-          state: kiosk.state,
-          productType: 'Aviva_Tu_Negocio',
-          coordinates: {
-            latitude: kiosk.coordinates.latitude,
-            longitude: kiosk.coordinates.longitude,
-          },
-          status: kiosk.status,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-
-        if (kiosk.radiusOverride) {
-          newKiosk.radiusOverride = kiosk.radiusOverride;
-        }
-
-        const newDocRef = firestoreDoc(collection(db, 'kiosks'));
-        batch.set(newDocRef, newKiosk);
-        batchCount++;
-        totalCreated++;
-
-        if (batchCount >= BATCH_SIZE) {
-          await batch.commit();
-          batch = writeBatch(db);
-          batchCount = 0;
-        }
-      }
-
-      if (batchCount > 0) {
-        await batch.commit();
-      }
-
-      await loadKiosks();
-      setSuccess(`${totalCreated} kioscos de Aviva Tu Negocio creados exitosamente`);
-      setTimeout(() => setSuccess(null), 5000);
-    } catch (error: any) {
-      console.error('Error duplicating kiosks:', error);
-      setError(`Error duplicando kioscos: ${error.message}`);
-    } finally {
-      setDuplicating(false);
-    }
-  };
-
   // Test Firestore connection
   const testConnection = async () => {
     try {
@@ -279,15 +191,6 @@ export default function AdminLocations() {
               onClick={testConnection}
             >
               Test DB
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={handleDuplicateForTuNegocio}
-              loading={duplicating}
-              disabled={duplicating}
-              leftIcon={<DocumentDuplicateIcon className="h-4 w-4" />}
-            >
-              {duplicating ? 'Duplicando...' : 'Duplicar para Aviva Tu Negocio'}
             </Button>
             <Button
               variant="secondary"

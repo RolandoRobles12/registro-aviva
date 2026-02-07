@@ -90,8 +90,10 @@ export default function SimpleCheckIn() {
   };
 
   // Filter kiosks by selected product
-  const filteredKiosks = selectedProduct 
-    ? kiosks.filter(k => k.productType === selectedProduct)
+  // Aviva Tu Negocio shares the same physical kiosks as Aviva Contigo
+  const filteredKiosks = selectedProduct
+    ? kiosks.filter(k => k.productType === selectedProduct ||
+        (selectedProduct === 'Aviva_Tu_Negocio' && k.productType === 'Aviva_Contigo'))
     : [];
 
   // Camera functions - CORREGIDAS CON PREVIEW
