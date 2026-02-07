@@ -695,7 +695,7 @@ export class FirestoreService {
           userName: user.name,
           kioskId: formData.kioskId,
           kioskName: kiosk.name,
-          productType: kiosk.productType,
+          productType: formData.productType || kiosk.productType,
           type: formData.type,
           timestamp: serverTimestamp(),
           location: {
@@ -729,7 +729,7 @@ export class FirestoreService {
         const checkInDoc = await this.getDocument<CheckIn>('checkins', result);
         if (checkInDoc) {
           // Obtener configuración del sistema
-          config = await this.getSystemConfig(kiosk.productType);
+          config = await this.getSystemConfig(formData.productType || kiosk.productType);
 
           // Verificar si se requiere comentario pero no se proporcionó
           const { PunctualityActionEngine } = await import('./punctualityActionEngine');
