@@ -1,9 +1,14 @@
 // Script para duplicar kioscos de Aviva Contigo como Aviva Tu Negocio
-// Uso: npx ts-node scripts/duplicate-kiosks-aviva-tu-negocio.ts
+// Uso: npx tsx scripts/duplicate-kiosks-aviva-tu-negocio.ts
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import * as fs from 'fs';
-import * as path from 'path';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Inicializar Firebase Admin
 const serviceAccountPath = process.env.GOOGLE_APPLICATION_CREDENTIALS ||

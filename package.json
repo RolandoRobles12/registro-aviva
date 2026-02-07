@@ -14,7 +14,8 @@
     "deploy:hosting": "npm run build && firebase deploy --only hosting",
     "firebase:emulators": "firebase emulators:start",
     "type-check": "tsc --noEmit",
-    "assign-products": "tsx scripts/assign-product-types.ts"
+    "assign-products": "tsx scripts/assign-product-types.ts",
+    "duplicate-kiosks-tu-negocio": "tsx scripts/duplicate-kiosks-aviva-tu-negocio.ts"
   },
   "dependencies": {
     "@headlessui/react": "^1.7.17",
