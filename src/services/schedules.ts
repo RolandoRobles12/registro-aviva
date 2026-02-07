@@ -81,7 +81,15 @@ export class ScheduleService {
           workDays: [1, 2, 3, 4, 5, 6], // Mon-Sat
           worksOnHolidays: false
         };
-      
+
+      case 'Aviva_Tu_Negocio':
+        // Monday to Saturday, no holidays (same as Aviva Contigo)
+        return {
+          ...baseSchedule,
+          workDays: [1, 2, 3, 4, 5, 6], // Mon-Sat
+          worksOnHolidays: false
+        };
+
       case 'Casa_Marchand':
         // Monday to Friday
         return {
@@ -362,7 +370,7 @@ export class ScheduleService {
   static async getAllSchedules(): Promise<ProductSchedule[]> {
     try {
       const schedules: ProductSchedule[] = [];
-      const productTypes: ProductType[] = ['BA', 'Aviva_Contigo', 'Casa_Marchand', 'Construrama', 'Disensa'];
+      const productTypes: ProductType[] = ['BA', 'Aviva_Contigo', 'Aviva_Tu_Negocio', 'Casa_Marchand', 'Construrama', 'Disensa'];
       
       for (const productType of productTypes) {
         const schedule = await this.getProductSchedule(productType);

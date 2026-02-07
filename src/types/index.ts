@@ -2,7 +2,7 @@
 import { Timestamp } from 'firebase/firestore'
 
 // ================= BASIC TYPES =================
-export type ProductType = 'BA' | 'Aviva_Contigo' | 'Casa_Marchand' | 'Construrama' | 'Disensa'
+export type ProductType = 'BA' | 'Aviva_Contigo' | 'Aviva_Tu_Negocio' | 'Casa_Marchand' | 'Construrama' | 'Disensa'
 
 export type UserRole = 'super_admin' | 'admin' | 'supervisor' | 'promotor'
 

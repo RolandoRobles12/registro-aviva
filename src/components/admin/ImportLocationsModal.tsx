@@ -89,7 +89,7 @@ export function ImportLocationsModal({ isOpen, onClose, onSuccess }: ImportLocat
     }
 
     // Validate type
-    const validTypes = ['Bodega Aurrera', 'Kiosco Aviva Tu Compra', 'BA', 'Aviva_Contigo', 'Casa_Marchand', 'Construrama', 'Disensa'];
+    const validTypes = ['Bodega Aurrera', 'Kiosco Aviva Tu Compra', 'Aviva Tu Negocio', 'BA', 'Aviva_Contigo', 'Aviva_Tu_Negocio', 'Casa_Marchand', 'Construrama', 'Disensa'];
     if (!validTypes.includes(row.type)) {
       errors.push(`Fila ${index + 2}: Tipo de producto inválido`);
     }
@@ -109,6 +109,8 @@ export function ImportLocationsModal({ isOpen, onClose, onSuccess }: ImportLocat
       productType = 'BA';
     } else if (row.type === 'Kiosco Aviva Tu Compra' || row.type === 'Aviva_Contigo') {
       productType = 'Aviva_Contigo';
+    } else if (row.type === 'Aviva Tu Negocio' || row.type === 'Aviva_Tu_Negocio') {
+      productType = 'Aviva_Tu_Negocio';
     } else if (row.type === 'Casa_Marchand') {
       productType = 'Casa_Marchand';
     } else if (row.type === 'Construrama') {

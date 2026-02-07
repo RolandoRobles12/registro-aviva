@@ -3,6 +3,7 @@
 export const PRODUCT_TYPES = {
   BA: 'Bodega Aurrera',
   Aviva_Contigo: 'Aviva Contigo',
+  Aviva_Tu_Negocio: 'Aviva Tu Negocio',
   Casa_Marchand: 'Casa Marchand',
   Construrama: 'Construrama',
   Disensa: 'Disensa'

@@ -62,7 +62,7 @@ const VALIDATION_CONFIG = {
   LOCATION_LABELS: ['Retail', 'Store', 'Shop', 'Product', 'Shelf', 'Supermarket', 'Market', 'Building', 'Indoor', 'Room', 'Wall'],
 
   // Logos esperados (OPCIONAL - no crítico porque puede estar cubierto)
-  EXPECTED_LOGOS: ['Aviva', 'BA', 'Construrama', 'Disensa'],
+  EXPECTED_LOGOS: ['Aviva', 'BA', 'Construrama', 'Disensa', 'Aviva Tu Negocio'],
 
   // Color verde esperado (RGB aproximado del uniforme Aviva)
   EXPECTED_GREEN_RANGE: {
