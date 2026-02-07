@@ -4,20 +4,13 @@
       "collectionGroup": "checkins",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "checkins", 
-      "queryScope": "COLLECTION",
-      "fields": [
         { "fieldPath": "kioskId", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "checkins",
-      "queryScope": "COLLECTION", 
+      "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "productType", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "DESCENDING" }
@@ -33,7 +26,7 @@
     },
     {
       "collectionGroup": "checkins",
-      "queryScope": "COLLECTION", 
+      "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "type", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "DESCENDING" }
@@ -65,7 +58,7 @@
     },
     {
       "collectionGroup": "time_off_requests",
-      "queryScope": "COLLECTION", 
+      "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "type", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
@@ -80,32 +73,11 @@
       ]
     },
     {
-      "collectionGroup": "attendance_issues", 
+      "collectionGroup": "attendance_issues",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "productType", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "holidays",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "date", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "kiosks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "id", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "kiosks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "name", "order": "ASCENDING" }
       ]
     },
     {
