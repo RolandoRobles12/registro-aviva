@@ -29,12 +29,12 @@ export function Header({ onMenuClick, showMenuButton = false, isAdmin = false }:
   };
 
   return (
-    <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
+    <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-primary-700 bg-primary-600 px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
       {/* Mobile menu button */}
       {showMenuButton && (
         <button
           type="button"
-          className="-m-2.5 p-2.5 text-gray-700 lg:hidden"
+          className="-m-2.5 p-2.5 text-white lg:hidden"
           onClick={onMenuClick}
         >
           <span className="sr-only">Abrir sidebar</span>
@@ -43,15 +43,15 @@ export function Header({ onMenuClick, showMenuButton = false, isAdmin = false }:
       )}
 
       {/* Separator */}
-      <div className="h-6 w-px bg-gray-200 lg:hidden" aria-hidden="true" />
+      <div className="h-6 w-px bg-primary-500 lg:hidden" aria-hidden="true" />
 
       <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
         {/* Left side - Logo/Title (only visible on mobile) */}
         <div className="flex items-center lg:hidden">
           <div className="flex items-center">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
               <svg
-                className="w-5 h-5 text-white"
+                className="w-5 h-5 text-primary-600"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -64,11 +64,11 @@ export function Header({ onMenuClick, showMenuButton = false, isAdmin = false }:
                 />
               </svg>
             </div>
-            <h1 className="ml-2 text-lg font-semibold text-gray-900">
+            <h1 className="ml-2 text-lg font-semibold text-white">
               Asistencia Aviva
             </h1>
             {isAdmin && (
-              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-200 text-primary-800">
                 Admin
               </span>
             )}
@@ -80,25 +80,38 @@ export function Header({ onMenuClick, showMenuButton = false, isAdmin = false }:
           {/* Notifications */}
           <button
             type="button"
-            className="-m-2.5 p-2.5 text-gray-400 hover:text-gray-500"
+            className="-m-2.5 p-2.5 text-primary-100 hover:text-white"
           >
             <span className="sr-only">Ver notificaciones</span>
             <BellIcon className="h-6 w-6" aria-hidden="true" />
           </button>
 
           {/* Separator */}
-          <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200" aria-hidden="true" />
+          <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-primary-500" aria-hidden="true" />
+
+          {/* Logout button - always visible for shared devices */}
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="flex items-center gap-x-1.5 rounded-md bg-primary-700 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-800 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-primary-600 transition-colors"
+          >
+            <ArrowRightOnRectangleIcon className="h-4 w-4" aria-hidden="true" />
+            <span>Cerrar Sesión</span>
+          </button>
+
+          {/* Separator */}
+          <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-primary-500" aria-hidden="true" />
 
           {/* Profile dropdown */}
           <Menu as="div" className="relative">
             <Menu.Button className="-m-1.5 flex items-center p-1.5">
               <span className="sr-only">Abrir menú de usuario</span>
-              <UserCircleIcon className="h-8 w-8 text-gray-400" />
+              <UserCircleIcon className="h-8 w-8 text-primary-100" />
               <span className="hidden lg:flex lg:items-center">
-                <span className="ml-4 text-sm font-semibold leading-6 text-gray-900" aria-hidden="true">
+                <span className="ml-4 text-sm font-semibold leading-6 text-white" aria-hidden="true">
                   {user?.name}
                 </span>
-                <ChevronDownIcon className="ml-2 h-5 w-5 text-gray-400" aria-hidden="true" />
+                <ChevronDownIcon className="ml-2 h-5 w-5 text-primary-200" aria-hidden="true" />
               </span>
             </Menu.Button>
             <Transition
