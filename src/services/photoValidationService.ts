@@ -15,6 +15,19 @@ interface ManualPhotoReviewResponse {
   message: string;
 }
 
+interface AIValidationParams {
+  checkInId: string;
+}
+
+interface AIValidationResponse {
+  success: boolean;
+  validation: {
+    status: string;
+    confidence: number;
+    rejectionReason?: string;
+  };
+}
+
 /**
  * Servicio para interactuar con las Cloud Functions de validación de fotos
  */
@@ -66,5 +79,23 @@ export class PhotoValidationService {
    */
   static async rejectPhoto(checkInId: string, reason: string): Promise<ManualPhotoReviewResponse> {
     return this.reviewPhoto(checkInId, false, reason);
+  }
+
+  /**
+   * Disparar validación de foto con IA manualmente
+   */
+  static async triggerAIValidation(checkInId: string): Promise<AIValidationResponse> {
+    try {
+      const validatePhotoWithAI = httpsCallable<AIValidationParams, AIValidationResponse>(
+        functions,
+        'validatePhotoWithAI'
+      );
+
+      const result = await validatePhotoWithAI({ checkInId });
+      return result.data;
+    } catch (error: any) {
+      console.error('Error en validación con IA:', error);
+      throw new Error(error.message || 'Error al validar la foto con IA');
+    }
   }
 }

@@ -6,97 +6,86 @@ import { validateCheckInPhoto } from './photoValidation';
 admin.initializeApp();
 
 /**
- * Cloud Function: Valida foto de check-in con Google Vision API
- * Se ejecuta cuando se sube una foto a Firebase Storage
+ * Cloud Function: Valida foto de check-in con IA de forma manual
+ * Se ejecuta SOLO cuando un admin/supervisor lo solicita explícitamente
  */
-export const validatePhotoOnUpload = functions
+export const validatePhotoWithAI = functions
   .runWith({
     timeoutSeconds: 540,
     memory: '1GB'
   })
-  .storage
-  .bucket('registro-aviva.firebasestorage.app')
-  .object()
-  .onFinalize(async (object) => {
-    const filePath = object.name;
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Debe estar autenticado para realizar esta acción'
+      );
+    }
 
-    // Solo procesar fotos de check-in
-    if (!filePath || !filePath.startsWith('attendance-photos/')) {
-      console.log('Archivo no es foto de check-in, ignorando:', filePath);
-      return null;
+    const userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+    const userData = userDoc.data();
+
+    if (!userData || !['supervisor', 'admin', 'super_admin'].includes(userData.role)) {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Solo supervisores y administradores pueden validar fotos con IA'
+      );
+    }
+
+    const { checkInId } = data;
+
+    if (!checkInId) {
+      throw new functions.https.HttpsError('invalid-argument', 'Se requiere checkInId');
+    }
+
+    const checkInDoc = await admin.firestore().collection('checkins').doc(checkInId).get();
+
+    if (!checkInDoc.exists) {
+      throw new functions.https.HttpsError('not-found', 'Check-in no encontrado');
+    }
+
+    const checkInData = checkInDoc.data();
+
+    if (!checkInData?.photoUrl) {
+      throw new functions.https.HttpsError('failed-precondition', 'El check-in no tiene foto');
     }
 
     try {
-      console.log('Procesando validación de foto:', filePath);
+      // Extraer el storage path desde la download URL
+      const photoUrl: string = checkInData.photoUrl;
+      const urlObj = new URL(photoUrl);
+      const filePath = decodeURIComponent(urlObj.pathname.split('/o/')[1].split('?')[0]);
 
-      // Extraer checkInId del path
-      // attendance-photos/2025/12/userId/checkinId_timestamp.jpg
-      const fileName = filePath.split('/').pop();
-      const checkInId = fileName?.split('_')[0];
-
-      if (!checkInId) {
-        console.error('No se pudo extraer checkInId del path:', filePath);
-        return null;
-      }
-
-      // Obtener el documento de check-in para verificar el tipo
-      const checkInDoc = await admin.firestore().collection('checkins').doc(checkInId).get();
-
-      if (!checkInDoc.exists) {
-        console.error('Documento de check-in no encontrado:', checkInId);
-        return null;
-      }
-
-      const checkInData = checkInDoc.data();
-
-      // SOLO validar fotos de tipo "entrada"
-      if (checkInData?.type !== 'entrada') {
-        console.log('Check-in no es de tipo entrada, omitiendo validación:', {
-          checkInId,
-          type: checkInData?.type
-        });
-        return null;
-      }
-
-      console.log('Check-in es de tipo entrada, procediendo con validación');
-
-      // Obtener archivo de Storage
-      const bucket = admin.storage().bucket(object.bucket);
+      const bucket = admin.storage().bucket();
       const file = bucket.file(filePath);
 
       // Validar foto con Google Vision API
       const validationResult = await validateCheckInPhoto(file);
 
-      // Actualizar documento de check-in con resultados de validación
       await admin.firestore().collection('checkins').doc(checkInId).update({
         photoValidation: {
           ...validationResult,
           processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          triggeredBy: context.auth.uid,
         },
       });
 
-      console.log('Validación de foto completada:', {
-        checkInId,
-        status: validationResult.status,
-        confidence: validationResult.confidence,
-      });
-
-      // Si la foto fue rechazada automáticamente, crear notificación
       if (validationResult.status === 'rejected') {
         await admin.firestore().collection('notifications').add({
           type: 'photo_rejected',
           title: 'Foto de Check-in Rechazada',
           message: validationResult.rejectionReason || 'La foto no cumple con los requisitos',
+          userId: checkInData.userId,
           checkInId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           read: false,
         });
       }
 
-      return null;
+      return { success: true, validation: validationResult };
     } catch (error) {
-      console.error('Error validando foto:', error);
-      return null;
+      console.error('Error validando foto con IA:', error);
+      throw new functions.https.HttpsError('internal', 'Error al validar la foto con IA');
     }
   });
 

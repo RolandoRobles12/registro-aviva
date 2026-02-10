@@ -6,7 +6,7 @@ import { PhotoValidationBadge } from '../../components/common/PhotoValidationBad
 import { Alert, Button, LoadingSpinner } from '../../components/ui';
 import { CheckIn } from '../../types';
 import { formatTimestamp } from '../../utils/formatters';
-import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, XCircleIcon, SparklesIcon } from '@heroicons/react/24/outline';
 
 export default function PhotoReview() {
   const { user } = useAuth();
@@ -16,6 +16,7 @@ export default function PhotoReview() {
   const [selectedCheckIn, setSelectedCheckIn] = useState<CheckIn | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
   const [reviewing, setReviewing] = useState(false);
+  const [validatingAI, setValidatingAI] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Cargar check-ins que requieren revisión
@@ -35,11 +36,13 @@ export default function PhotoReview() {
         endDate: new Date(),
       });
 
-      // Filtrar solo los que requieren revisión manual
+      // Filtrar check-ins de tipo entrada: sin validación o que requieren revisión manual
       const pendingReviews = allCheckIns.filter(
         (checkIn) =>
-          checkIn.photoValidation &&
-          (checkIn.photoValidation.status === 'needs_review' ||
+          checkIn.type === 'entrada' &&
+          checkIn.photoUrl &&
+          (!checkIn.photoValidation ||
+            checkIn.photoValidation.status === 'needs_review' ||
             checkIn.photoValidation.status === 'pending')
       );
 
@@ -49,6 +52,25 @@ export default function PhotoReview() {
       setError(err.message || 'Error al cargar revisiones pendientes');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleValidateWithAI = async (checkIn: CheckIn) => {
+    try {
+      setValidatingAI(checkIn.id);
+      setError(null);
+
+      await PhotoValidationService.triggerAIValidation(checkIn.id);
+
+      setSuccessMessage(`Validación con IA completada para ${checkIn.userName}`);
+      await loadPendingReviews();
+
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      console.error('Error en validación con IA:', err);
+      setError(err.message || 'Error al validar con IA');
+    } finally {
+      setValidatingAI(null);
     }
   };
 
@@ -260,14 +282,27 @@ export default function PhotoReview() {
                     </div>
                   </div>
                 ) : (
-                  <div className="border-t pt-4">
+                  <div className="border-t pt-4 space-y-2">
+                    {!checkIn.photoValidation && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleValidateWithAI(checkIn)}
+                        loading={validatingAI === checkIn.id}
+                        disabled={validatingAI !== null}
+                        fullWidth
+                      >
+                        <SparklesIcon className="h-4 w-4 mr-1" />
+                        {validatingAI === checkIn.id ? 'Validando...' : 'Validar con IA'}
+                      </Button>
+                    )}
                     <Button
                       variant="primary"
                       size="sm"
                       onClick={() => setSelectedCheckIn(checkIn)}
                       fullWidth
                     >
-                      Revisar
+                      Revisar manualmente
                     </Button>
                   </div>
                 )}
