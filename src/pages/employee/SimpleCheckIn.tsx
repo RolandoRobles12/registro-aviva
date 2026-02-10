@@ -11,7 +11,15 @@ import { PRODUCT_TYPES, CHECK_IN_TYPES, TIME_OFF_TYPES } from '../../utils/const
 import { CheckInFormData, TimeOffFormData, Kiosk } from '../../types';
 
 export default function SimpleCheckIn() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
   const { location, getCurrentLocation, permission } = useGeolocation();
   const { toast, showSuccess, showError, hideToast } = useToast(); // ✅ TOAST HOOKS
   
@@ -466,16 +474,23 @@ export default function SimpleCheckIn() {
             <ClockIcon className="h-6 w-6" />
             <h1 className="text-xl font-bold">Asistencia Aviva</h1>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
             <span className="text-sm">{user.name}</span>
             {(user.role === 'admin' || user.role === 'super_admin') && (
-              <a 
+              <a
                 href="/admin/dashboard"
                 className="bg-primary-500 hover:bg-primary-400 px-3 py-1 rounded text-sm"
               >
                 Panel Admin
               </a>
             )}
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="bg-primary-700 hover:bg-primary-800 px-3 py-1 rounded text-sm font-medium transition-colors"
+            >
+              Cerrar Sesión
+            </button>
           </div>
         </div>
       </div>
