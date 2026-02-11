@@ -195,13 +195,19 @@ export async function syncHubIdFromKiosk(
         }
 
         // Obtener el kiosco para leer su hubId
-        const kioskDoc = await getDoc(doc(db, 'kiosks', lastCheckIn.kioskId));
-        if (!kioskDoc.exists() || !kioskDoc.data().hubId) {
+        // NOTA: kioskId es un campo custom, NO el Firestore document ID,
+        // por lo que hay que buscar con query where('id', '==', ...)
+        const kioskQuery = query(
+          collection(db, 'kiosks'),
+          where('id', '==', lastCheckIn.kioskId)
+        );
+        const kioskSnap = await getDocs(kioskQuery);
+        if (kioskSnap.empty || !kioskSnap.docs[0].data().hubId) {
           noKioskCount++;
           continue;
         }
 
-        const kioskData = kioskDoc.data();
+        const kioskData = kioskSnap.docs[0].data();
 
         await updateDoc(doc(db, 'users', user.id), {
           assignedKiosk: lastCheckIn.kioskId,
