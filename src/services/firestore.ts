@@ -667,6 +667,36 @@ export class FirestoreService {
     try {
       console.log('Creating check-in for user:', userId);
 
+      // Verificar si ya existe un check-in del mismo tipo hoy para este usuario
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const dupQuery = query(
+        collection(db, 'checkins'),
+        where('userId', '==', userId),
+        where('type', '==', formData.type),
+        where('timestamp', '>=', Timestamp.fromDate(todayStart)),
+        orderBy('timestamp', 'desc'),
+        limit(1)
+      );
+      const dupSnap = await getDocs(dupQuery);
+
+      if (!dupSnap.empty) {
+        const existingTs = dupSnap.docs[0].data().timestamp as Timestamp;
+        const timeStr = existingTs.toDate().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        const typeLabels: Record<string, string> = {
+          entrada: 'entrada',
+          comida: 'salida a comida',
+          regreso_comida: 'regreso de comida',
+          salida: 'salida',
+        };
+        const label = typeLabels[formData.type] || formData.type;
+        throw new Error(
+          `Ya registraste tu ${label} hoy a las ${timeStr}. ` +
+          `No es posible registrar el mismo tipo de marcaje dos veces en el mismo día.`
+        );
+      }
+
       let user: User;
       let kiosk: Kiosk;
       let config: SystemConfig;

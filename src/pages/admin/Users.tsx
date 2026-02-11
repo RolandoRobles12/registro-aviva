@@ -20,6 +20,7 @@ export default function AdminUsers() {
   const [migrating, setMigrating] = useState(false);
   const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; userName: string } | null>(null);
   const [usersWithoutProduct, setUsersWithoutProduct] = useState(0);
+  const [staleUsersCount, setStaleUsersCount] = useState(0);
 
   useEffect(() => {
     loadUsers();
@@ -49,6 +50,18 @@ export default function AdminUsers() {
 
       setUsers(usersList);
       setFilteredUsers(usersList);
+
+      // Detectar usuarios activos sin actividad en 60+ días para alertar al admin
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      const stale = usersList.filter((u) => {
+        if (u.status !== 'active' || ['admin', 'super_admin'].includes(u.role)) return false;
+        const lastLogin = (u as any).lastLoginAt;
+        if (!lastLogin) return true;
+        const lastLoginDate: Date = lastLogin?.toDate ? lastLogin.toDate() : new Date(lastLogin);
+        return lastLoginDate < sixtyDaysAgo;
+      });
+      setStaleUsersCount(stale.length);
     } catch (error) {
       console.error('Error loading users:', error);
       setError('Error cargando usuarios');
@@ -270,6 +283,15 @@ export default function AdminUsers() {
           message={success}
           dismissible
           onDismiss={() => setSuccess(null)}
+        />
+      )}
+
+      {staleUsersCount > 0 && (
+        <Alert
+          type="warning"
+          message={`${staleUsersCount} colaborador(es) activo(s) llevan más de 60 días sin iniciar sesión. Verifica si aún trabajan en la empresa y márcalos como inactivos si ya no son colaboradores.`}
+          dismissible
+          onDismiss={() => setStaleUsersCount(0)}
         />
       )}
 
