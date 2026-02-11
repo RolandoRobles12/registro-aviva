@@ -1,6 +1,5 @@
 // src/components/admin/HubReportModal.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { httpsCallable } from 'firebase/functions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -14,7 +13,7 @@ import {
 import { Modal, Button } from '../ui';
 import { Hub } from '../../types';
 import { HubReportService, HubDailyReport } from '../../services/hubReportService';
-import { functions } from '../../config/firebase';
+import { sendViaGmail } from '../../services/gmailService';
 
 interface HubReportModalProps {
   hub: Hub;
@@ -82,14 +81,11 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
 
     setState('sending');
     try {
-      const sendReport = httpsCallable(functions, 'sendHubReport');
-      await sendReport({
-        hubId: hub.id,
-        hubName: hub.name,
-        date: selectedDate,
-        recipients: recipientList,
+      const [year, month, day] = selectedDate.split('-');
+      await sendViaGmail({
+        to: recipientList,
+        subject: `Reporte Diario — ${hub.name} — ${day}/${month}/${year}`,
         html: getEmailHtml(),
-        notes: notes || null,
       });
       setState('sent');
     } catch (err: any) {
@@ -268,7 +264,7 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
                     : <PaperAirplaneIcon className="h-4 w-4" />
                 }
               >
-                {state === 'sending' ? 'Enviando...' : 'Enviar reporte'}
+                {state === 'sending' ? 'Autoriza en el popup de Google...' : 'Enviar reporte'}
               </Button>
             </div>
           </>
