@@ -7,7 +7,7 @@ import {
   onAuthStateChanged,
   User as FirebaseUser
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../config/firebase';
 import { User, UserRole } from '../types';
 
@@ -106,7 +106,12 @@ export class AuthService {
           throw new Error(`Solo se permiten correos del dominio @${ALLOWED_DOMAIN}`);
         }
 
-        return await this.getOrCreateUserDocument(firebaseUser);
+        const user = await this.getOrCreateUserDocument(firebaseUser);
+        if (user.status === 'inactive') {
+          await firebaseSignOut(auth);
+          throw new Error('Tu cuenta está desactivada. Contacta al administrador.');
+        }
+        return user;
       }
       return null;
     } catch (error) {
@@ -139,6 +144,8 @@ export class AuthService {
 
       if (userSnap.exists()) {
         console.log('Existing user found');
+        // Registrar último inicio de sesión para detectar usuarios sin actividad reciente
+        updateDoc(userRef, { lastLoginAt: serverTimestamp() }).catch(() => {});
         return { id: firebaseUser.uid, ...userSnap.data() } as User;
       }
 
