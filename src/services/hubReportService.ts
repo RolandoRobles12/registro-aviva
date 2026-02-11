@@ -113,8 +113,13 @@ export class HubReportService {
         minutesLate: ci.validationResults?.minutesLate ?? 0,
       }));
 
+    // Set de usuarios que SÍ registraron entrada ese día (cualquier status)
+    const checkedInUserIds = new Set(allEntradas.map(ci => ci.userId));
+
     // ── 3. Faltas (sin entrada) del día ───────────────────────────────────────
     // Solo 'no_entry'; 'no_exit' y 'no_lunch_return' no aplican para este reporte.
+    // Se excluyen usuarios que ya tienen una 'entrada' real para evitar falsos positivos
+    // (el motor de faltas puede haber creado la issue antes de que el usuario registrara).
     const issues = await batchQuery<AttendanceIssue>(userIds, batch =>
       query(
         collection(db, 'attendance_issues'),
@@ -122,7 +127,11 @@ export class HubReportService {
         where('date', '>=', Timestamp.fromDate(startOfDay)),
         where('date', '<=', Timestamp.fromDate(endOfDay))
       )
-    ).then(all => all.filter(i => !i.resolved && i.type === 'no_entry'));
+    ).then(all =>
+      all.filter(
+        i => !i.resolved && i.type === 'no_entry' && !checkedInUserIds.has(i.userId)
+      )
+    );
 
     const absences: Absence[] = issues.map(issue => ({
       userId: issue.userId,
@@ -135,8 +144,9 @@ export class HubReportService {
     // ── 4. Resumen ────────────────────────────────────────────────────────────
     const lateUserIds = new Set(lateEntries.map(e => e.userId));
     const absentUserIds = new Set(absences.map(a => a.userId));
+    // A tiempo: usuarios que registraron entrada y NO están en retrasos
     const onTimeCount = users.filter(
-      u => !lateUserIds.has(u.id) && !absentUserIds.has(u.id)
+      u => checkedInUserIds.has(u.id) && !lateUserIds.has(u.id)
     ).length;
 
     const punctualityRate =
