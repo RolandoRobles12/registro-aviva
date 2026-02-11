@@ -68,15 +68,25 @@ export class HubReportService {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // 1. Usuarios activos asignados al hub
-    const usersSnap = await getDocs(
-      query(
-        collection(db, 'users'),
-        where('hubId', '==', hub.id),
-        where('status', '==', 'active')
-      )
+    // 1a. Kioscos asignados al hub
+    const kiosksSnap = await getDocs(
+      query(collection(db, 'kiosks'), where('hubId', '==', hub.id))
     );
-    const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as User));
+    const hubKioskIds = kiosksSnap.docs.map(d => d.id);
+
+    // 1b. Usuarios activos cuyo kiosko asignado pertenece al hub
+    //     Los usuarios se ligan al hub a través de su kiosko (assignedKiosk → kiosk.hubId),
+    //     no mediante un campo hubId directo (que es opcional y puede no estar poblado).
+    let users: User[] = [];
+    if (hubKioskIds.length > 0) {
+      users = await batchQuery<User>(hubKioskIds, batch =>
+        query(
+          collection(db, 'users'),
+          where('assignedKiosk', 'in', batch),
+          where('status', '==', 'active')
+        )
+      );
+    }
     const userIds = users.map(u => u.id);
 
     if (userIds.length === 0) {

@@ -91,8 +91,9 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
       isOpen
       onClose={onClose}
       title={`Reporte Diario — ${hub.name}`}
+      size="xl"
     >
-      <div className="space-y-4" style={{ minWidth: '700px', maxWidth: '860px' }}>
+      <div className="space-y-4">
 
         {/* ── LOADING ── */}
         {state === 'loading' && (
