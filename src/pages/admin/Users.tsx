@@ -7,7 +7,7 @@ import { UserFilters } from '../../components/admin/UserFilters';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
 import { User } from '../../types';
 import { PlusIcon, UserPlusIcon, ArrowPathIcon, MagnifyingGlassIcon, NoSymbolIcon, TrashIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
-import { assignProductTypesFromCheckIns, getUsersWithoutProduct } from '../../services/userMigration';
+import { assignProductTypesFromCheckIns, getUsersWithoutProduct, syncHubIdFromKiosk } from '../../services/userMigration';
 
 export default function AdminUsers() {
   const [users, setUsers] = useState<User[]>([]);
@@ -198,21 +198,27 @@ export default function AdminUsers() {
         }
       );
 
+      // Sincronizar hubId desde el kiosco del último check-in
+      const hubResult = await syncHubIdFromKiosk(
+        (current, total, userName) => {
+          setMigrationProgress({ current, total, userName });
+        }
+      );
+
       setMigrationProgress(null);
 
-      if (result.success > 0) {
+      const anyUpdate = result.success > 0 || hubResult.success > 0;
+      if (anyUpdate) {
         setSuccess(
-          `✅ Asignación completada:\n` +
-          `• ${result.success} usuarios actualizados\n` +
-          `• ${result.noCheckIns} usuarios sin check-ins\n` +
-          `• ${result.errors} errores`
+          `✅ Sincronización completada:\n` +
+          `• ${result.success} productos asignados\n` +
+          `• ${hubResult.success} hubs sincronizados\n` +
+          `• ${result.noCheckIns + hubResult.noCheckIns} usuarios sin check-ins`
         );
-
-        // Recargar usuarios
         await loadUsers();
         await checkUsersWithoutProduct();
-      } else if (result.total === 0) {
-        setSuccess('Todos los usuarios activos ya tienen producto asignado');
+      } else if (result.total === 0 && hubResult.total === 0) {
+        setSuccess('Todos los usuarios activos ya tienen producto y hub asignados');
       } else {
         setError(
           `No se pudieron asignar productos:\n` +
