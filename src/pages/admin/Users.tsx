@@ -6,7 +6,7 @@ import { UserForm } from '../../components/admin/UserForm';
 import { UserFilters } from '../../components/admin/UserFilters';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
 import { User } from '../../types';
-import { PlusIcon, UserPlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, UserPlusIcon, ArrowPathIcon, MagnifyingGlassIcon, NoSymbolIcon, TrashIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { assignProductTypesFromCheckIns, getUsersWithoutProduct } from '../../services/userMigration';
 
 export default function AdminUsers() {
@@ -21,6 +21,10 @@ export default function AdminUsers() {
   const [migrationProgress, setMigrationProgress] = useState<{ current: number; total: number; userName: string } | null>(null);
   const [usersWithoutProduct, setUsersWithoutProduct] = useState(0);
   const [staleUsersCount, setStaleUsersCount] = useState(0);
+  const [showBulkPanel, setShowBulkPanel] = useState(false);
+  const [bulkEmailInput, setBulkEmailInput] = useState('');
+  const [bulkResults, setBulkResults] = useState<{ found: User[]; notFound: string[] } | null>(null);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -226,6 +230,68 @@ export default function AdminUsers() {
     }
   };
 
+  const handleBulkSearch = () => {
+    const emails = bulkEmailInput
+      .split(/[\n,;]+/)
+      .map(e => e.trim().toLowerCase())
+      .filter(e => e.length > 0);
+
+    if (emails.length === 0) return;
+
+    const found = users.filter(u => emails.includes(u.email.toLowerCase()));
+    const foundEmails = new Set(found.map(u => u.email.toLowerCase()));
+    const notFound = emails.filter(e => !foundEmails.has(e));
+
+    setBulkResults({ found, notFound });
+  };
+
+  const handleBulkDeactivate = async () => {
+    if (!bulkResults || bulkResults.found.length === 0) return;
+    const targets = bulkResults.found.filter(u => u.status === 'active');
+    if (targets.length === 0) {
+      setError('Todos los usuarios encontrados ya están inactivos.');
+      return;
+    }
+    if (!confirm(`¿Desactivar ${targets.length} usuario(s)? Dejarán de aparecer en reportes de faltas y no podrán iniciar sesión.`)) return;
+
+    try {
+      setBulkProcessing(true);
+      await Promise.all(targets.map(u =>
+        updateDoc(doc(db, 'users', u.id), { status: 'inactive', updatedAt: new Date() })
+      ));
+      setSuccess(`${targets.length} usuario(s) desactivado(s) correctamente.`);
+      setBulkResults(null);
+      setBulkEmailInput('');
+      await loadUsers();
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err) {
+      console.error('Error en desactivación masiva:', err);
+      setError('Error al desactivar usuarios.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!bulkResults || bulkResults.found.length === 0) return;
+    if (!confirm(`¿Eliminar permanentemente ${bulkResults.found.length} usuario(s)? Esta acción no se puede deshacer.`)) return;
+
+    try {
+      setBulkProcessing(true);
+      await Promise.all(bulkResults.found.map(u => deleteDoc(doc(db, 'users', u.id))));
+      setSuccess(`${bulkResults.found.length} usuario(s) eliminado(s) correctamente.`);
+      setBulkResults(null);
+      setBulkEmailInput('');
+      await loadUsers();
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err) {
+      console.error('Error en eliminación masiva:', err);
+      setError('Error al eliminar usuarios.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -294,6 +360,114 @@ export default function AdminUsers() {
           onDismiss={() => setStaleUsersCount(0)}
         />
       )}
+
+      {/* Panel: Gestión masiva por correo */}
+      <div className="bg-white shadow rounded-lg">
+        <button
+          className="w-full flex items-center justify-between px-6 py-4 text-left"
+          onClick={() => { setShowBulkPanel(p => !p); setBulkResults(null); setBulkEmailInput(''); }}
+        >
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Desactivar o eliminar usuarios por correo</h3>
+            <p className="text-sm text-gray-500">Pega los correos de ex-colaboradores para desactivarlos o eliminarlos en masa.</p>
+          </div>
+          {showBulkPanel
+            ? <ChevronUpIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />
+            : <ChevronDownIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />}
+        </button>
+
+        {showBulkPanel && (
+          <div className="border-t border-gray-200 px-6 py-5 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Correos electrónicos <span className="text-gray-400">(uno por línea, o separados por coma)</span>
+              </label>
+              <textarea
+                rows={5}
+                value={bulkEmailInput}
+                onChange={e => { setBulkEmailInput(e.target.value); setBulkResults(null); }}
+                placeholder={"correo1@avivacredito.com\ncorreo2@avivacredito.com"}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
+              />
+            </div>
+
+            <Button
+              variant="secondary"
+              onClick={handleBulkSearch}
+              leftIcon={<MagnifyingGlassIcon className="h-4 w-4" />}
+              disabled={bulkEmailInput.trim().length === 0}
+            >
+              Buscar usuarios
+            </Button>
+
+            {bulkResults && (
+              <div className="space-y-3">
+                {/* Usuarios encontrados */}
+                {bulkResults.found.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">
+                      {bulkResults.found.length} usuario(s) encontrado(s):
+                    </p>
+                    <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-60 overflow-y-auto">
+                      {bulkResults.found.map(u => (
+                        <div key={u.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                          <div>
+                            <span className="font-medium text-gray-900">{u.name}</span>
+                            <span className="ml-2 text-gray-500">{u.email}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {u.status === 'active' ? 'Activo' : 'Inactivo'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Correos no encontrados */}
+                {bulkResults.notFound.length > 0 && (
+                  <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-3">
+                    <p className="text-sm font-medium text-yellow-800 mb-1">
+                      {bulkResults.notFound.length} correo(s) no encontrado(s) en el sistema:
+                    </p>
+                    <p className="text-xs text-yellow-700 font-mono">{bulkResults.notFound.join(', ')}</p>
+                  </div>
+                )}
+
+                {/* Acciones */}
+                {bulkResults.found.length > 0 && (
+                  <div className="flex items-center gap-3 pt-1">
+                    <Button
+                      variant="secondary"
+                      onClick={handleBulkDeactivate}
+                      leftIcon={<NoSymbolIcon className="h-4 w-4" />}
+                      loading={bulkProcessing}
+                      disabled={bulkProcessing}
+                    >
+                      Desactivar {bulkResults.found.filter(u => u.status === 'active').length} activo(s)
+                    </Button>
+                    <Button
+                      variant="danger"
+                      onClick={handleBulkDelete}
+                      leftIcon={<TrashIcon className="h-4 w-4" />}
+                      loading={bulkProcessing}
+                      disabled={bulkProcessing}
+                    >
+                      Eliminar {bulkResults.found.length}
+                    </Button>
+                    <button
+                      onClick={() => { setBulkResults(null); setBulkEmailInput(''); }}
+                      className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                    >
+                      <XMarkIcon className="h-4 w-4" /> Limpiar
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Filters */}
       <UserFilters
