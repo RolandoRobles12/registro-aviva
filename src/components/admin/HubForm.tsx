@@ -15,6 +15,8 @@ export function HubForm({ hub, onSave, onCancel }: HubFormProps) {
   const [availableStates, setAvailableStates] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<string[]>(hub?.states || []);
   const [selectedProducts, setSelectedProducts] = useState<ProductType[]>(hub?.productTypes || []);
+  const [reportEmails, setReportEmails] = useState<string[]>(hub?.reportEmails || []);
+  const [newEmail, setNewEmail] = useState('');
   const [newState, setNewState] = useState('');
 
   const {
@@ -63,10 +65,23 @@ export function HubForm({ hub, onSave, onCancel }: HubFormProps) {
     const dataToSave = {
       ...formData,
       states: selectedStates,
-      productTypes: selectedProducts
+      productTypes: selectedProducts,
+      reportEmails,
     };
     await onSave(dataToSave);
   });
+
+  const handleAddEmail = () => {
+    const email = newEmail.trim().toLowerCase();
+    if (email && email.includes('@') && !reportEmails.includes(email)) {
+      setReportEmails([...reportEmails, email]);
+      setNewEmail('');
+    }
+  };
+
+  const handleRemoveEmail = (email: string) => {
+    setReportEmails(reportEmails.filter(e => e !== email));
+  };
 
   const handleToggleState = (state: string) => {
     if (selectedStates.includes(state)) {
@@ -278,6 +293,42 @@ export function HubForm({ hub, onSave, onCancel }: HubFormProps) {
 
         {errors.productTypes && (
           <p className="mt-1 text-sm text-red-600">{errors.productTypes}</p>
+        )}
+      </div>
+
+      {/* Correos del Reporte Diario */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Correos para el Reporte Diario
+          <span className="text-gray-400 font-normal ml-1">(Opcional)</span>
+        </label>
+        <div className="flex gap-2 mb-3">
+          <input
+            type="email"
+            placeholder="correo@avivacredito.com"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); handleAddEmail(); }
+            }}
+            className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+          />
+          <Button type="button" onClick={handleAddEmail} disabled={!newEmail.trim()} variant="secondary">
+            Agregar
+          </Button>
+        </div>
+        {reportEmails.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {reportEmails.map(email => (
+              <span key={email} className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
+                {email}
+                <button type="button" onClick={() => handleRemoveEmail(email)} className="ml-2 text-blue-600 hover:text-blue-800">×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        {reportEmails.length === 0 && (
+          <p className="text-xs text-gray-400">Sin correos configurados. Podrás editarlos al enviar el reporte.</p>
         )}
       </div>
 

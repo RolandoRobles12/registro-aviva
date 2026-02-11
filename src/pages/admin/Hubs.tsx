@@ -10,8 +10,10 @@ import {
   CubeIcon,
   ChartBarIcon,
   MapPinIcon,
-  UserGroupIcon
+  UserGroupIcon,
+  EnvelopeIcon,
 } from '@heroicons/react/24/outline';
+import { HubReportModal } from '../../components/admin/HubReportModal';
 
 export default function Hubs() {
   const { user } = useAuth();
@@ -25,6 +27,7 @@ export default function Hubs() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [hubToDelete, setHubToDelete] = useState<Hub | null>(null);
+  const [hubForReport, setHubForReport] = useState<Hub | null>(null);
 
   useEffect(() => {
     loadHubs();
@@ -362,7 +365,14 @@ export default function Hubs() {
             )}
 
             {/* Actions */}
-            <div className="pt-4 border-t">
+            <div className="pt-4 border-t space-y-2">
+              <Button
+                onClick={() => setHubForReport(selectedHub)}
+                className="w-full"
+                leftIcon={<EnvelopeIcon className="h-4 w-4" />}
+              >
+                Reporte Diario de Asistencia
+              </Button>
               <Button
                 onClick={() => handleAutoAssignKiosks(selectedHub)}
                 variant="secondary"
@@ -373,6 +383,14 @@ export default function Hubs() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Hub Report Modal */}
+      {hubForReport && (
+        <HubReportModal
+          hub={hubForReport}
+          onClose={() => setHubForReport(null)}
+        />
       )}
 
       {/* Delete Confirmation Modal */}

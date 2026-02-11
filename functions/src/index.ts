@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import * as nodemailer from 'nodemailer';
 import { validateCheckInPhoto } from './photoValidation';
 
 // Inicializar Firebase Admin
@@ -99,6 +100,93 @@ export const validatePhotoOnUpload = functions
       return null;
     }
   });
+
+/**
+ * Cloud Function: Envía el reporte diario de asistencia de un hub por correo.
+ * Llama desde el cliente con: httpsCallable(functions, 'sendHubReport')
+ *
+ * Requiere configuración SMTP en Firebase Functions:
+ *   firebase functions:config:set smtp.host="..." smtp.port="587"
+ *     smtp.user="..." smtp.pass="..." smtp.from="Registro Aviva <noreply@avivacredito.com>"
+ */
+export const sendHubReport = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'Debe estar autenticado para enviar reportes'
+    );
+  }
+
+  const userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  const userData = userDoc.data();
+  if (!userData || !['admin', 'super_admin'].includes(userData.role)) {
+    throw new functions.https.HttpsError(
+      'permission-denied',
+      'Solo administradores pueden enviar reportes'
+    );
+  }
+
+  const { hubId, hubName, date, recipients, html, notes } = data as {
+    hubId: string;
+    hubName: string;
+    date: string;
+    recipients: string[];
+    html: string;
+    notes?: string;
+  };
+
+  if (!hubId || !date || !recipients?.length || !html) {
+    throw new functions.https.HttpsError('invalid-argument', 'Parámetros incompletos');
+  }
+
+  const smtpConfig = functions.config().smtp as {
+    host: string;
+    port: string;
+    user: string;
+    pass: string;
+    from?: string;
+  } | undefined;
+
+  if (!smtpConfig?.host || !smtpConfig?.user || !smtpConfig?.pass) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'La configuración SMTP no está disponible. Configura las variables con firebase functions:config:set smtp.host smtp.user smtp.pass smtp.port'
+    );
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtpConfig.host,
+    port: parseInt(smtpConfig.port || '587', 10),
+    secure: smtpConfig.port === '465',
+    auth: { user: smtpConfig.user, pass: smtpConfig.pass },
+  });
+
+  const fromAddress = smtpConfig.from || `Registro Aviva <${smtpConfig.user}>`;
+
+  // Formatear fecha para el asunto
+  const [year, month, day] = date.split('-');
+  const dateFormatted = `${day}/${month}/${year}`;
+
+  await transporter.sendMail({
+    from: fromAddress,
+    to: recipients.join(', '),
+    subject: `Reporte Diario — ${hubName} — ${dateFormatted}`,
+    html,
+  });
+
+  // Guardar registro del envío en Firestore
+  await admin.firestore().collection('hub_report_logs').add({
+    hubId,
+    hubName,
+    date,
+    recipients,
+    sentBy: context.auth.uid,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    hasNotes: !!notes,
+  });
+
+  return { success: true };
+});
 
 /**
  * Cloud Function: Permite validación manual de fotos por supervisores
