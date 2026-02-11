@@ -235,6 +235,7 @@ export default function Hubs() {
           onDelete={handleDeleteHub}
           onToggleStatus={handleToggleStatus}
           onViewDetails={handleViewDetails}
+          onOpenReport={hub => setHubForReport(hub)}
         />
       </div>
 

@@ -1,5 +1,5 @@
 // src/components/admin/HubReportModal.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -34,7 +34,6 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
   const [notes, setNotes] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     loadReport(new Date(selectedDate + 'T12:00:00'));
@@ -54,17 +53,6 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
 
   const getEmailHtml = () =>
     report ? HubReportService.buildEmailHtml(report, notes || undefined) : '';
-
-  // Sync iframe preview when report or notes change
-  useEffect(() => {
-    if (state !== 'preview' || !iframeRef.current) return;
-    const doc = iframeRef.current.contentDocument;
-    if (doc) {
-      doc.open();
-      doc.write(getEmailHtml());
-      doc.close();
-    }
-  }, [report, notes, state]);
 
   const handleSend = async () => {
     const recipientList = recipients
@@ -104,7 +92,7 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
       onClose={onClose}
       title={`Reporte Diario — ${hub.name}`}
     >
-      <div className="space-y-4" style={{ minWidth: '640px', maxWidth: '760px' }}>
+      <div className="space-y-4" style={{ minWidth: '700px', maxWidth: '860px' }}>
 
         {/* ── LOADING ── */}
         {state === 'loading' && (
@@ -237,10 +225,10 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
               </div>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <iframe
-                  ref={iframeRef}
                   title="Vista previa del reporte"
                   className="w-full"
-                  style={{ height: '420px', border: 'none' }}
+                  style={{ height: '480px', border: 'none' }}
+                  srcDoc={getEmailHtml()}
                   sandbox="allow-same-origin"
                 />
               </div>
