@@ -210,20 +210,21 @@ export default function AdminUsers() {
       const anyUpdate = result.success > 0 || hubResult.success > 0;
       if (anyUpdate) {
         setSuccess(
-          `✅ Sincronización completada:\n` +
-          `• ${result.success} productos asignados\n` +
-          `• ${hubResult.success} hubs sincronizados\n` +
-          `• ${result.noCheckIns + hubResult.noCheckIns} usuarios sin check-ins`
+          `✅ Sincronización completada: ${result.success} productos asignados, ${hubResult.success} hubs sincronizados.` +
+          (result.noCheckIns + hubResult.noCheckIns > 0
+            ? ` (${result.noCheckIns + hubResult.noCheckIns} sin check-ins — edítalos manualmente)`
+            : '')
         );
         await loadUsers();
         await checkUsersWithoutProduct();
       } else if (result.total === 0 && hubResult.total === 0) {
-        setSuccess('Todos los usuarios activos ya tienen producto y hub asignados');
+        setSuccess('✅ Todos los usuarios activos ya tienen producto y hub asignados.');
       } else {
-        setError(
-          `No se pudieron asignar productos:\n` +
-          `• ${result.noCheckIns} usuarios sin check-ins\n` +
-          `• ${result.errors} errores`
+        // Todos los usuarios sin producto no tienen check-ins: guiar al admin al formulario manual
+        setSuccess(
+          `Los ${result.noCheckIns} usuario(s) sin producto nunca han hecho un check-in, ` +
+          `así que no se puede detectar su hub/kiosco automáticamente. ` +
+          `Edítalos uno a uno con el botón ✏️ para asignarles Hub y Kiosco manualmente.`
         );
       }
 
