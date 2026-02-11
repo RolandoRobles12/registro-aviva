@@ -68,25 +68,58 @@ export class HubReportService {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // 1a. Kioscos asignados al hub
-    const kiosksSnap = await getDocs(
+    // ── 1. Obtener kioscos del hub ────────────────────────────────────────────
+    // Estrategia 1: kioscos con hubId asignado directamente
+    const kioskIdSet = new Set<string>();
+    const directKiosksSnap = await getDocs(
       query(collection(db, 'kiosks'), where('hubId', '==', hub.id))
     );
-    const hubKioskIds = kiosksSnap.docs.map(d => d.id);
+    directKiosksSnap.docs.forEach(d => kioskIdSet.add(d.id));
 
-    // 1b. Usuarios activos cuyo kiosko asignado pertenece al hub
-    //     Los usuarios se ligan al hub a través de su kiosko (assignedKiosk → kiosk.hubId),
-    //     no mediante un campo hubId directo (que es opcional y puede no estar poblado).
-    let users: User[] = [];
+    // Estrategia 2 (fallback): kioscos cuyo estado esté en los estados del hub
+    // y cuyo productType esté en los productTypes del hub.
+    // Funciona aunque hubId no esté asignado en los kioscos.
+    if (kioskIdSet.size === 0 && hub.states.length > 0) {
+      for (let i = 0; i < hub.states.length; i += 10) {
+        const stateBatch = hub.states.slice(i, i + 10);
+        const snap = await getDocs(
+          query(collection(db, 'kiosks'), where('state', 'in', stateBatch))
+        );
+        snap.docs
+          .filter(d => hub.productTypes.includes(d.data().productType))
+          .forEach(d => kioskIdSet.add(d.id));
+      }
+    }
+    const hubKioskIds = Array.from(kioskIdSet);
+
+    // ── 2. Obtener usuarios activos del hub ───────────────────────────────────
+    // Estrategia 1: por kiosko asignado (assignedKiosk → kiosko del hub)
+    const userMap = new Map<string, User>();
     if (hubKioskIds.length > 0) {
-      users = await batchQuery<User>(hubKioskIds, batch =>
+      const kioskUsers = await batchQuery<User>(hubKioskIds, batch =>
         query(
           collection(db, 'users'),
           where('assignedKiosk', 'in', batch),
           where('status', '==', 'active')
         )
       );
+      kioskUsers.forEach(u => userMap.set(u.id, u));
     }
+
+    // Estrategia 2 (complemento): usuarios con hubId directo
+    const directUsersSnap = await getDocs(
+      query(
+        collection(db, 'users'),
+        where('hubId', '==', hub.id),
+        where('status', '==', 'active')
+      )
+    );
+    directUsersSnap.docs.forEach(d => {
+      const u = { id: d.id, ...d.data() } as User;
+      userMap.set(u.id, u);
+    });
+
+    const users = Array.from(userMap.values());
     const userIds = users.map(u => u.id);
 
     if (userIds.length === 0) {
@@ -101,8 +134,8 @@ export class HubReportService {
       };
     }
 
-    // 2. Check-ins de entrada del día (filtramos retrasados en JS para evitar
-    //    índices compuestos complejos en Firestore)
+    // ── 3. Check-ins de entrada del día ───────────────────────────────────────
+    // Filtramos retrasados en JS para no requerir índices compuestos en Firestore
     const allCheckIns = await batchQuery<CheckIn>(userIds, batch =>
       query(
         collection(db, 'checkins'),
@@ -124,7 +157,8 @@ export class HubReportService {
         minutesLate: ci.validationResults?.minutesLate ?? 0,
       }));
 
-    // 3. Problemas de asistencia del día (filtramos resolved en JS)
+    // ── 4. Faltas del día ─────────────────────────────────────────────────────
+    // Filtramos resolved en JS para no requerir índices compuestos en Firestore
     const issues = await batchQuery<AttendanceIssue>(userIds, batch =>
       query(
         collection(db, 'attendance_issues'),
@@ -142,7 +176,7 @@ export class HubReportService {
       typeLabel: ABSENCE_TYPE_LABELS[issue.type] ?? issue.type,
     }));
 
-    // 4. Calcular resumen
+    // ── 5. Resumen ────────────────────────────────────────────────────────────
     const lateUserIds = new Set(lateEntries.map(e => e.userId));
     const absentUserIds = new Set(
       absences.filter(a => a.type === 'no_entry').map(a => a.userId)
@@ -170,18 +204,24 @@ export class HubReportService {
   }
 
   /**
-   * Genera el HTML del correo. Se usa tanto para la vista previa
-   * como para el cuerpo del email enviado por la Cloud Function.
+   * Genera el HTML del correo con los colores de marca Aviva.
+   * Se usa tanto para la vista previa como para el cuerpo del email enviado.
    */
   static buildEmailHtml(report: HubDailyReport, notes?: string): string {
+    // Colores Aviva (verde primario)
+    const AVIVA_DARK   = '#0A6149'; // primary-700
+    const AVIVA_MID    = '#0ca060'; // primary-600
+    const AVIVA_LIGHT  = '#edf7f3'; // primary-50
+    const AVIVA_BORDER = '#B2DCC2'; // primary-200
+
     const dateStr = format(report.date, "EEEE d 'de' MMMM yyyy", { locale: es });
     const dateStrCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
 
     const punctualityColor =
       report.summary.punctualityRate >= 90
-        ? '#16a34a'
+        ? AVIVA_DARK
         : report.summary.punctualityRate >= 70
-        ? '#ca8a04'
+        ? '#d97706'
         : '#dc2626';
 
     const lateRows = report.lateEntries
@@ -191,7 +231,7 @@ export class HubReportService {
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${e.userName}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${e.kioskName}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${e.checkInTime}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#ca8a04;font-weight:600;">${e.minutesLate} min</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:#b45309;font-weight:600;">${e.minutesLate} min</td>
         </tr>`
       )
       .join('');
@@ -210,12 +250,12 @@ export class HubReportService {
     const lateSection =
       report.lateEntries.length > 0
         ? `
-        <h3 style="color:#92400e;margin:24px 0 8px;">Retrasos (${report.lateEntries.length})</h3>
+        <h3 style="color:#92400e;margin:24px 0 8px;font-size:15px;">Retrasos (${report.lateEntries.length})</h3>
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
           <thead>
             <tr style="background:#fef3c7;">
-              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fbbf24;">Empleado</th>
-              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fbbf24;">Kiosko</th>
+              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fbbf24;">Colaborador</th>
+              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fbbf24;">Tienda</th>
               <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fbbf24;">Hora entrada</th>
               <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fbbf24;">Retraso</th>
             </tr>
@@ -227,13 +267,13 @@ export class HubReportService {
     const absenceSection =
       report.absences.length > 0
         ? `
-        <h3 style="color:#991b1b;margin:24px 0 8px;">Faltas (${report.absences.length})</h3>
+        <h3 style="color:#991b1b;margin:24px 0 8px;font-size:15px;">Faltas (${report.absences.length})</h3>
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
           <thead>
             <tr style="background:#fee2e2;">
-              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fca5a5;">Empleado</th>
-              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fca5a5;">Kiosko</th>
-              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fca5a5;">Tipo</th>
+              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fca5a5;">Colaborador</th>
+              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fca5a5;">Tienda</th>
+              <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #fca5a5;">Tipo de incidencia</th>
             </tr>
           </thead>
           <tbody>${absenceRows}</tbody>
@@ -243,13 +283,13 @@ export class HubReportService {
     const allOnTime =
       report.lateEntries.length === 0 && report.absences.length === 0;
     const noIssuesSection = allOnTime
-      ? `<p style="color:#16a34a;font-weight:600;margin:16px 0;">
-           ✅ Sin retrasos ni faltas — todos a tiempo.
+      ? `<p style="color:${AVIVA_DARK};font-weight:600;margin:16px 0;font-size:14px;">
+           Sin retrasos ni faltas — todos a tiempo.
          </p>`
       : '';
 
     const notesSection = notes
-      ? `<div style="margin-top:24px;padding:16px;background:#f9fafb;border-left:4px solid #6b7280;border-radius:4px;">
+      ? `<div style="margin-top:24px;padding:16px;background:#f9fafb;border-left:4px solid #6b7280;border-radius:4px;font-size:14px;">
            <strong>Notas:</strong><br/><span style="white-space:pre-wrap;">${notes}</span>
          </div>`
       : '';
@@ -261,9 +301,9 @@ export class HubReportService {
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;margin:32px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);">
     <!-- Header -->
     <tr>
-      <td style="background:#1e40af;padding:24px 32px;">
-        <h1 style="margin:0;color:#ffffff;font-size:20px;">Reporte Diario de Asistencia</h1>
-        <p style="margin:4px 0 0;color:#bfdbfe;font-size:14px;">${report.hub.name} — ${dateStrCap}</p>
+      <td style="background:${AVIVA_DARK};padding:24px 32px;">
+        <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">Reporte Diario de Asistencia</h1>
+        <p style="margin:4px 0 0;color:${AVIVA_BORDER};font-size:14px;">${report.hub.name} — ${dateStrCap}</p>
       </td>
     </tr>
     <!-- Summary -->
@@ -271,18 +311,18 @@ export class HubReportService {
       <td style="padding:24px 32px;">
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
-            <td style="text-align:center;padding:16px;background:#f0f9ff;border-radius:8px;width:25%;">
-              <div style="font-size:28px;font-weight:700;color:#1e40af;">${report.totalUsers}</div>
-              <div style="font-size:12px;color:#64748b;">Total empleados</div>
+            <td style="text-align:center;padding:16px;background:${AVIVA_LIGHT};border-radius:8px;width:25%;">
+              <div style="font-size:28px;font-weight:700;color:${AVIVA_DARK};">${report.totalUsers}</div>
+              <div style="font-size:12px;color:#64748b;">Total colaboradores</div>
             </td>
             <td style="width:4%"></td>
             <td style="text-align:center;padding:16px;background:#f0fdf4;border-radius:8px;width:25%;">
-              <div style="font-size:28px;font-weight:700;color:#16a34a;">${report.onTimeCount}</div>
+              <div style="font-size:28px;font-weight:700;color:${AVIVA_MID};">${report.onTimeCount}</div>
               <div style="font-size:12px;color:#64748b;">A tiempo</div>
             </td>
             <td style="width:4%"></td>
             <td style="text-align:center;padding:16px;background:#fffbeb;border-radius:8px;width:25%;">
-              <div style="font-size:28px;font-weight:700;color:#ca8a04;">${report.summary.lateCount}</div>
+              <div style="font-size:28px;font-weight:700;color:#b45309;">${report.summary.lateCount}</div>
               <div style="font-size:12px;color:#64748b;">Retrasos</div>
             </td>
             <td style="width:4%"></td>
@@ -307,7 +347,7 @@ export class HubReportService {
     <!-- Footer -->
     <tr>
       <td style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#9ca3af;text-align:center;">
-        Registro Aviva — Reporte generado automáticamente
+        Registro Aviva — Reporte generado automaticamente
       </td>
     </tr>
   </table>

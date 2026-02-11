@@ -9,10 +9,11 @@ import {
   ArrowPathIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 import { Modal, Button } from '../ui';
 import { Hub } from '../../types';
-import { HubReportService, HubDailyReport } from '../../services/hubReportService';
+import { HubReportService, HubDailyReport, LateEntry, Absence } from '../../services/hubReportService';
 import { sendViaGmail } from '../../services/gmailService';
 
 interface HubReportModalProps {
@@ -35,9 +36,21 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
   const [editingNotes, setEditingNotes] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Estado editable de incidencias (para revisión antes de enviar)
+  const [editedLateEntries, setEditedLateEntries] = useState<LateEntry[]>([]);
+  const [editedAbsences, setEditedAbsences] = useState<Absence[]>([]);
+
   useEffect(() => {
     loadReport(new Date(selectedDate + 'T12:00:00'));
   }, [selectedDate]);
+
+  // Sincronizar edición cuando llega el reporte
+  useEffect(() => {
+    if (report) {
+      setEditedLateEntries(report.lateEntries);
+      setEditedAbsences(report.absences);
+    }
+  }, [report]);
 
   const loadReport = async (date: Date) => {
     setState('loading');
@@ -51,8 +64,37 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
     }
   };
 
-  const getEmailHtml = () =>
-    report ? HubReportService.buildEmailHtml(report, notes || undefined) : '';
+  // Construye el reporte con las incidencias editadas y recalcula el resumen
+  const getEditedReport = (): HubDailyReport | null => {
+    if (!report) return null;
+    const lateUserIds = new Set(editedLateEntries.map(e => e.userId));
+    const absentUserIds = new Set(
+      editedAbsences.filter(a => a.type === 'no_entry').map(a => a.userId)
+    );
+    const onTimeCount = Math.max(
+      0,
+      report.totalUsers - lateUserIds.size - absentUserIds.size
+    );
+    return {
+      ...report,
+      lateEntries: editedLateEntries,
+      absences: editedAbsences,
+      onTimeCount,
+      summary: {
+        lateCount: lateUserIds.size,
+        absentCount: absentUserIds.size,
+        punctualityRate:
+          report.totalUsers > 0
+            ? Math.round((onTimeCount / report.totalUsers) * 100)
+            : 100,
+      },
+    };
+  };
+
+  const getEmailHtml = () => {
+    const edited = getEditedReport();
+    return edited ? HubReportService.buildEmailHtml(edited, notes || undefined) : '';
+  };
 
   const handleSend = async () => {
     const recipientList = recipients
@@ -61,9 +103,7 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
       .filter(r => r.includes('@'));
 
     if (recipientList.length === 0) {
-      setErrorMsg(
-        'Agrega al menos un correo destinatario antes de enviar.'
-      );
+      setErrorMsg('Agrega al menos un correo destinatario antes de enviar.');
       return;
     }
 
@@ -82,9 +122,9 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
     }
   };
 
-  const dateLabel = report
-    ? format(report.date, "EEEE d 'de' MMMM", { locale: es })
-    : '';
+  const editedReport = getEditedReport();
+  const hasIncidencias =
+    editedLateEntries.length > 0 || editedAbsences.length > 0;
 
   return (
     <Modal
@@ -98,7 +138,7 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
         {/* ── LOADING ── */}
         {state === 'loading' && (
           <div className="flex flex-col items-center justify-center py-12 space-y-3 text-gray-500">
-            <ArrowPathIcon className="h-10 w-10 animate-spin text-blue-500" />
+            <ArrowPathIcon className="h-10 w-10 animate-spin text-primary-600" />
             <p>Generando reporte...</p>
           </div>
         )}
@@ -106,7 +146,7 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
         {/* ── SENT ── */}
         {state === 'sent' && (
           <div className="flex flex-col items-center justify-center py-10 space-y-3">
-            <CheckCircleIcon className="h-14 w-14 text-green-500" />
+            <CheckCircleIcon className="h-14 w-14 text-primary-600" />
             <p className="text-lg font-semibold text-gray-900">
               Reporte enviado correctamente
             </p>
@@ -136,11 +176,10 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
         )}
 
         {/* ── PREVIEW / SENDING ── */}
-        {(state === 'preview' || state === 'sending') && report && (
+        {(state === 'preview' || state === 'sending') && report && editedReport && (
           <>
             {/* Controls row */}
             <div className="flex flex-wrap items-end gap-4 pb-2 border-b border-gray-200">
-              {/* Date */}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">
                   Fecha del reporte
@@ -151,29 +190,144 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
                   max={format(new Date(), 'yyyy-MM-dd')}
                   onChange={e => setSelectedDate(e.target.value)}
                   disabled={state === 'sending'}
-                  className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               </div>
-              {/* Summary chips */}
               <div className="flex gap-2 text-xs font-medium">
-                <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-700">
-                  {report.totalUsers} empleados
+                <span className="px-2 py-1 rounded-full bg-primary-50 text-primary-700">
+                  {editedReport.totalUsers} empleados
                 </span>
                 <span className="px-2 py-1 rounded-full bg-green-100 text-green-700">
-                  {report.onTimeCount} a tiempo
+                  {editedReport.onTimeCount} a tiempo
                 </span>
-                {report.summary.lateCount > 0 && (
+                {editedReport.summary.lateCount > 0 && (
                   <span className="px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
-                    {report.summary.lateCount} retrasos
+                    {editedReport.summary.lateCount} retrasos
                   </span>
                 )}
-                {report.summary.absentCount > 0 && (
+                {editedReport.summary.absentCount > 0 && (
                   <span className="px-2 py-1 rounded-full bg-red-100 text-red-700">
-                    {report.summary.absentCount} faltas
+                    {editedReport.summary.absentCount} faltas
                   </span>
                 )}
               </div>
             </div>
+
+            {/* ── Verificación de incidencias (editable) ── */}
+            {hasIncidencias && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-700">
+                    Verificar incidencias antes de enviar
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    Elimina registros incorrectos con el icono de la fila
+                  </p>
+                </div>
+
+                {/* Retrasos */}
+                {editedLateEntries.length > 0 && (
+                  <div className="px-4 py-3">
+                    <p className="text-xs font-semibold text-amber-700 mb-2">
+                      Retrasos ({editedLateEntries.length})
+                    </p>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-gray-400 border-b border-gray-100">
+                          <th className="text-left py-1 pr-3 font-medium">Colaborador</th>
+                          <th className="text-left py-1 pr-3 font-medium">Tienda</th>
+                          <th className="text-left py-1 pr-3 font-medium">Hora entrada</th>
+                          <th className="text-left py-1 pr-3 font-medium">Retraso</th>
+                          <th className="w-6"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editedLateEntries.map((entry, i) => (
+                          <tr
+                            key={`late-${entry.userId}-${i}`}
+                            className="border-t border-gray-100 hover:bg-amber-50"
+                          >
+                            <td className="py-1.5 pr-3 font-medium text-gray-900">
+                              {entry.userName}
+                            </td>
+                            <td className="py-1.5 pr-3 text-gray-600">{entry.kioskName}</td>
+                            <td className="py-1.5 pr-3 text-gray-700">{entry.checkInTime}</td>
+                            <td className="py-1.5 pr-3 font-semibold text-amber-700">
+                              {entry.minutesLate} min
+                            </td>
+                            <td className="py-1.5 text-right">
+                              <button
+                                onClick={() =>
+                                  setEditedLateEntries(prev =>
+                                    prev.filter((_, idx) => idx !== i)
+                                  )
+                                }
+                                disabled={state === 'sending'}
+                                className="text-gray-300 hover:text-red-500 disabled:opacity-30"
+                                title="Eliminar esta incidencia del reporte"
+                              >
+                                <TrashIcon className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Faltas */}
+                {editedAbsences.length > 0 && (
+                  <div
+                    className={`px-4 py-3 ${
+                      editedLateEntries.length > 0 ? 'border-t border-gray-200' : ''
+                    }`}
+                  >
+                    <p className="text-xs font-semibold text-red-700 mb-2">
+                      Faltas ({editedAbsences.length})
+                    </p>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-gray-400 border-b border-gray-100">
+                          <th className="text-left py-1 pr-3 font-medium">Colaborador</th>
+                          <th className="text-left py-1 pr-3 font-medium">Tienda</th>
+                          <th className="text-left py-1 pr-3 font-medium">Tipo</th>
+                          <th className="w-6"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editedAbsences.map((absence, i) => (
+                          <tr
+                            key={`abs-${absence.userId}-${absence.type}-${i}`}
+                            className="border-t border-gray-100 hover:bg-red-50"
+                          >
+                            <td className="py-1.5 pr-3 font-medium text-gray-900">
+                              {absence.userName}
+                            </td>
+                            <td className="py-1.5 pr-3 text-gray-600">{absence.kioskName}</td>
+                            <td className="py-1.5 pr-3 text-red-700">{absence.typeLabel}</td>
+                            <td className="py-1.5 text-right">
+                              <button
+                                onClick={() =>
+                                  setEditedAbsences(prev =>
+                                    prev.filter((_, idx) => idx !== i)
+                                  )
+                                }
+                                disabled={state === 'sending'}
+                                className="text-gray-300 hover:text-red-500 disabled:opacity-30"
+                                title="Eliminar esta incidencia del reporte"
+                              >
+                                <TrashIcon className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Recipients */}
             <div>
@@ -187,7 +341,7 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
                 onChange={e => setRecipients(e.target.value)}
                 disabled={state === 'sending'}
                 placeholder="correo@ejemplo.com"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
 
@@ -200,7 +354,7 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
                 <button
                   type="button"
                   onClick={() => setEditingNotes(v => !v)}
-                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                  className="text-xs text-primary-600 hover:underline flex items-center gap-1"
                 >
                   <PencilIcon className="h-3 w-3" />
                   {editingNotes ? 'Ocultar' : 'Agregar nota'}
@@ -212,8 +366,8 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   disabled={state === 'sending'}
-                  placeholder="Agrega contexto, justificaciones o aclaraciones que se incluirán en el correo..."
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Contexto, justificaciones o aclaraciones que se incluirán en el correo..."
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               )}
             </div>
@@ -230,7 +384,6 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
                   className="w-full"
                   style={{ height: '480px', border: 'none' }}
                   srcDoc={getEmailHtml()}
-                  sandbox="allow-same-origin"
                 />
               </div>
             </div>
