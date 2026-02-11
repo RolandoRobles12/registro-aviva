@@ -230,19 +230,27 @@ export default function AdminUsers() {
     }
   };
 
-  const handleBulkSearch = () => {
-    const emails = bulkEmailInput
-      .split(/[\n,;]+/)
+  const searchEmails = (raw: string) => {
+    const emails = raw
+      .split(/[\n\r,;|\t\s]+/)
       .map(e => e.trim().toLowerCase())
-      .filter(e => e.length > 0);
+      .filter(e => e.includes('@'));
 
-    if (emails.length === 0) return;
+    if (emails.length === 0) { setBulkResults(null); return; }
 
     const found = users.filter(u => emails.includes(u.email.toLowerCase()));
     const foundEmails = new Set(found.map(u => u.email.toLowerCase()));
     const notFound = emails.filter(e => !foundEmails.has(e));
-
     setBulkResults({ found, notFound });
+  };
+
+  const handleBulkSearch = () => searchEmails(bulkEmailInput);
+
+  const handleBulkPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text');
+    setBulkEmailInput(pasted);
+    searchEmails(pasted);
   };
 
   const handleBulkDeactivate = async () => {
@@ -380,25 +388,28 @@ export default function AdminUsers() {
           <div className="border-t border-gray-200 px-6 py-5 space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Correos electrónicos <span className="text-gray-400">(uno por línea, o separados por coma)</span>
+                Correos electrónicos{' '}
+                <span className="text-gray-400">— pega la lista y se buscará automáticamente</span>
               </label>
               <textarea
                 rows={5}
                 value={bulkEmailInput}
-                onChange={e => { setBulkEmailInput(e.target.value); setBulkResults(null); }}
+                onChange={e => { setBulkEmailInput(e.target.value); searchEmails(e.target.value); }}
+                onPaste={handleBulkPaste}
                 placeholder={"correo1@avivacredito.com\ncorreo2@avivacredito.com"}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
               />
             </div>
 
-            <Button
-              variant="secondary"
-              onClick={handleBulkSearch}
-              leftIcon={<MagnifyingGlassIcon className="h-4 w-4" />}
-              disabled={bulkEmailInput.trim().length === 0}
-            >
-              Buscar usuarios
-            </Button>
+            {bulkEmailInput.trim().length > 0 && !bulkResults && (
+              <Button
+                variant="secondary"
+                onClick={handleBulkSearch}
+                leftIcon={<MagnifyingGlassIcon className="h-4 w-4" />}
+              >
+                Buscar usuarios
+              </Button>
+            )}
 
             {bulkResults && (
               <div className="space-y-3">
