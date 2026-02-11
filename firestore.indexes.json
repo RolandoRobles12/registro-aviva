@@ -77,6 +77,14 @@
       "collectionGroup": "attendance_issues",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "attendance_issues",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "date", "order": "ASCENDING" },
         { "fieldPath": "resolved", "order": "ASCENDING" }
       ]
