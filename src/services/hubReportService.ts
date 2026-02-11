@@ -69,13 +69,32 @@ export class HubReportService {
     endOfDay.setHours(23, 59, 59, 999);
 
     // ── 1. Usuarios activos del hub ───────────────────────────────────────────
-    // Filtramos por hubId para obtener exactamente los usuarios de este hub
-    // y evitar que usuarios de otros hubs con el mismo productType aparezcan.
+    // Estrategia primaria: kioscos con hubId → usuarios con assignedKiosk.
+    // Estrategia de respaldo: buscar directamente por hubId en usuarios.
+    // Se usan ambas y se deduplican para cubrir cualquier combinación de datos.
     const userMap = new Map<string, User>();
-    const usersSnap = await getDocs(
+
+    // 1a. Kioscos asignados a este hub
+    const kiosksSnap = await getDocs(
+      query(collection(db, 'kiosks'), where('hubId', '==', hub.id))
+    );
+    const hubKioskIds = kiosksSnap.docs.map(d => d.id);
+
+    if (hubKioskIds.length > 0) {
+      // 1b. Usuarios cuyo kiosco asignado pertenece a este hub
+      const kioskUsers = await batchQuery<User>(hubKioskIds, batch =>
+        query(collection(db, 'users'), where('assignedKiosk', 'in', batch))
+      );
+      kioskUsers
+        .filter(u => u.status === 'active')
+        .forEach(u => userMap.set(u.id, u));
+    }
+
+    // 1c. Respaldo: usuarios con hubId directo (asignación manual o migración)
+    const directUsersSnap = await getDocs(
       query(collection(db, 'users'), where('hubId', '==', hub.id))
     );
-    usersSnap.docs
+    directUsersSnap.docs
       .filter(d => d.data().status === 'active')
       .forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as User));
 
