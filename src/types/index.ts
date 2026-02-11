@@ -22,6 +22,7 @@ export interface Hub {
   states: string[] // Estados geográficos (ej: ["Nuevo León", "Tamaulipas"])
   productTypes: ProductType[] // Productos asignados al hub
   status: 'active' | 'inactive'
+  reportEmails?: string[] // Correos a los que se envía el reporte diario
   createdAt: Timestamp
   updatedAt: Timestamp
   createdBy: string

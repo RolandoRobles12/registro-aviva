@@ -101,6 +101,92 @@ export const validatePhotoOnUpload = functions
   });
 
 /**
+ * Cloud Function: Envía el reporte diario de asistencia de un hub por correo.
+ * Usa Resend (resend.com) — API key que no caduca, sin contraseñas.
+ *
+ * Configuración (una sola vez):
+ *   firebase functions:config:set resend.key="re_xxxxxxxxxxxx"
+ *   firebase functions:config:set resend.from="Registro Aviva <noreply@avivacredito.com>"
+ */
+export const sendHubReport = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'Debe estar autenticado para enviar reportes'
+    );
+  }
+
+  const userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  const userData = userDoc.data();
+  if (!userData || !['admin', 'super_admin'].includes(userData.role)) {
+    throw new functions.https.HttpsError(
+      'permission-denied',
+      'Solo administradores pueden enviar reportes'
+    );
+  }
+
+  const { hubId, hubName, date, recipients, html, notes } = data as {
+    hubId: string;
+    hubName: string;
+    date: string;
+    recipients: string[];
+    html: string;
+    notes?: string;
+  };
+
+  if (!hubId || !date || !recipients?.length || !html) {
+    throw new functions.https.HttpsError('invalid-argument', 'Parámetros incompletos');
+  }
+
+  const resendKey = (functions.config().resend as any)?.key as string | undefined;
+  if (!resendKey) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'Falta la API key de Resend. Ejecuta: firebase functions:config:set resend.key="re_..."'
+    );
+  }
+  const fromAddress =
+    (functions.config().resend as any)?.from ||
+    'Registro Aviva <noreply@avivacredito.com>';
+
+  const [year, month, day] = date.split('-');
+  const dateFormatted = `${day}/${month}/${year}`;
+
+  // Node 18 tiene fetch nativo — sin paquetes externos
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${resendKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: fromAddress,
+      to: recipients,
+      subject: `Reporte Diario — ${hubName} — ${dateFormatted}`,
+      html,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Resend error:', errorText);
+    throw new functions.https.HttpsError('internal', `Error al enviar el correo: ${errorText}`);
+  }
+
+  await admin.firestore().collection('hub_report_logs').add({
+    hubId,
+    hubName,
+    date,
+    recipients,
+    sentBy: context.auth.uid,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    hasNotes: !!notes,
+  });
+
+  return { success: true };
+});
+
+/**
  * Cloud Function: Permite validación manual de fotos por supervisores
  * Endpoint HTTP para que supervisores aprueben/rechacen fotos
  */
