@@ -11,7 +11,8 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   MapPinIcon,
-  CubeIcon
+  CubeIcon,
+  EnvelopeIcon,
 } from '@heroicons/react/24/outline';
 
 interface HubsTableProps {
@@ -20,6 +21,7 @@ interface HubsTableProps {
   onDelete: (hub: Hub) => void;
   onToggleStatus: (hub: Hub) => void;
   onViewDetails: (hub: Hub) => void;
+  onOpenReport: (hub: Hub) => void;
 }
 
 export function HubsTable({
@@ -27,7 +29,8 @@ export function HubsTable({
   onEdit,
   onDelete,
   onToggleStatus,
-  onViewDetails
+  onViewDetails,
+  onOpenReport,
 }: HubsTableProps) {
   const [expandedHubId, setExpandedHubId] = useState<string | null>(null);
 
@@ -187,6 +190,13 @@ export function HubsTable({
                       ) : (
                         <CheckCircleIcon className="h-5 w-5" />
                       )}
+                    </button>
+                    <button
+                      onClick={() => onOpenReport(hub)}
+                      className="text-purple-600 hover:text-purple-900"
+                      title="Reporte diario de asistencia"
+                    >
+                      <EnvelopeIcon className="h-5 w-5" />
                     </button>
                     <button
                       onClick={() => onDelete(hub)}

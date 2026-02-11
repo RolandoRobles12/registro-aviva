@@ -5,7 +5,6 @@ import {
   where,
   getDocs,
   Timestamp,
-  orderBy,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { Hub, User, CheckIn, AttendanceIssue } from '../types';
@@ -92,37 +91,38 @@ export class HubReportService {
       };
     }
 
-    // 2. Check-ins de entrada retrasados (retrasos)
-    const lateCheckIns = await batchQuery<CheckIn>(userIds, batch =>
+    // 2. Check-ins de entrada del día (filtramos retrasados en JS para evitar
+    //    índices compuestos complejos en Firestore)
+    const allCheckIns = await batchQuery<CheckIn>(userIds, batch =>
       query(
         collection(db, 'checkins'),
         where('userId', 'in', batch),
         where('type', '==', 'entrada'),
-        where('status', '==', 'retrasado'),
         where('timestamp', '>=', Timestamp.fromDate(startOfDay)),
-        where('timestamp', '<=', Timestamp.fromDate(endOfDay)),
-        orderBy('timestamp', 'asc')
+        where('timestamp', '<=', Timestamp.fromDate(endOfDay))
       )
     );
+    const lateCheckIns = allCheckIns.filter(ci => ci.status === 'retrasado');
 
-    const lateEntries: LateEntry[] = lateCheckIns.map(ci => ({
-      userId: ci.userId,
-      userName: ci.userName,
-      kioskName: ci.kioskName,
-      checkInTime: format(ci.timestamp.toDate(), 'HH:mm'),
-      minutesLate: ci.validationResults?.minutesLate ?? 0,
-    }));
+    const lateEntries: LateEntry[] = lateCheckIns
+      .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis())
+      .map(ci => ({
+        userId: ci.userId,
+        userName: ci.userName,
+        kioskName: ci.kioskName,
+        checkInTime: format(ci.timestamp.toDate(), 'HH:mm'),
+        minutesLate: ci.validationResults?.minutesLate ?? 0,
+      }));
 
-    // 3. Problemas de asistencia (faltas)
+    // 3. Problemas de asistencia del día (filtramos resolved en JS)
     const issues = await batchQuery<AttendanceIssue>(userIds, batch =>
       query(
         collection(db, 'attendance_issues'),
         where('userId', 'in', batch),
-        where('resolved', '==', false),
         where('date', '>=', Timestamp.fromDate(startOfDay)),
         where('date', '<=', Timestamp.fromDate(endOfDay))
       )
-    );
+    ).then(all => all.filter(i => !i.resolved));
 
     const absences: Absence[] = issues.map(issue => ({
       userId: issue.userId,
