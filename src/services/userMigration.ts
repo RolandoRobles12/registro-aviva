@@ -1,5 +1,5 @@
 // Service for user migration utilities
-import { collection, getDocs, query, where, orderBy, limit, updateDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, getDoc, query, where, orderBy, limit, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { User, CheckIn, ProductType } from '../types';
 
@@ -142,6 +142,83 @@ export async function assignProductTypesFromCheckIns(
 
   } catch (error) {
     console.error('Error en assignProductTypesFromCheckIns:', error);
+    throw error;
+  }
+}
+
+/**
+ * Sincroniza assignedKiosk, assignedKioskName y hubId en usuarios activos
+ * a partir de su último check-in y el hubId del kiosco correspondiente.
+ * Se ejecuta sobre usuarios sin hubId (promotores/supervisores).
+ */
+export async function syncHubIdFromKiosk(
+  onProgress?: (current: number, total: number, userName: string) => void
+): Promise<{ total: number; success: number; noCheckIns: number; noKiosk: number; errors: number }> {
+  let successCount = 0;
+  let noCheckInsCount = 0;
+  let noKioskCount = 0;
+  let errorCount = 0;
+
+  try {
+    const usersSnapshot = await getDocs(collection(db, 'users'));
+    const users = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as User));
+
+    // Solo usuarios activos sin hubId (excluir admins)
+    const targets = users.filter(
+      u => u.status === 'active' && !u.hubId && u.role !== 'super_admin' && u.role !== 'admin'
+    );
+
+    const total = targets.length;
+
+    for (let i = 0; i < targets.length; i++) {
+      const user = targets[i];
+      if (onProgress) onProgress(i + 1, total, user.name);
+
+      try {
+        // Último check-in del usuario para obtener kioskId
+        const checkInsSnap = await getDocs(
+          query(collection(db, 'checkins'), where('userId', '==', user.id))
+        );
+
+        if (checkInsSnap.empty) {
+          noCheckInsCount++;
+          continue;
+        }
+
+        const lastCheckIn = checkInsSnap.docs
+          .map(d => d.data() as CheckIn)
+          .sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0))[0];
+
+        if (!lastCheckIn.kioskId) {
+          noKioskCount++;
+          continue;
+        }
+
+        // Obtener el kiosco para leer su hubId
+        const kioskDoc = await getDoc(doc(db, 'kiosks', lastCheckIn.kioskId));
+        if (!kioskDoc.exists() || !kioskDoc.data().hubId) {
+          noKioskCount++;
+          continue;
+        }
+
+        const kioskData = kioskDoc.data();
+
+        await updateDoc(doc(db, 'users', user.id), {
+          assignedKiosk: lastCheckIn.kioskId,
+          assignedKioskName: lastCheckIn.kioskName,
+          hubId: kioskData.hubId,
+          updatedAt: new Date(),
+        });
+
+        successCount++;
+      } catch (err) {
+        errorCount++;
+      }
+    }
+
+    return { total, success: successCount, noCheckIns: noCheckInsCount, noKiosk: noKioskCount, errors: errorCount };
+  } catch (error) {
+    console.error('Error en syncHubIdFromKiosk:', error);
     throw error;
   }
 }
