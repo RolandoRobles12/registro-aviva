@@ -68,75 +68,48 @@ export class HubReportService {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // ── 1. Obtener kioscos del hub ────────────────────────────────────────────
-    // Estrategia 1: kioscos con hubId asignado directamente
-    const kioskIdSet = new Set<string>();
-    const directKiosksSnap = await getDocs(
-      query(collection(db, 'kiosks'), where('hubId', '==', hub.id))
-    );
-    directKiosksSnap.docs.forEach(d => kioskIdSet.add(d.id));
-
-    // Estrategia 2 (fallback): kioscos cuyo estado esté en los estados del hub
-    // y cuyo productType esté en los productTypes del hub.
-    // Funciona aunque hubId no esté asignado en los kioscos.
-    if (kioskIdSet.size === 0 && hub.states.length > 0) {
-      for (let i = 0; i < hub.states.length; i += 10) {
-        const stateBatch = hub.states.slice(i, i + 10);
-        const snap = await getDocs(
-          query(collection(db, 'kiosks'), where('state', 'in', stateBatch))
-        );
-        snap.docs
-          .filter(d => hub.productTypes.includes(d.data().productType))
-          .forEach(d => kioskIdSet.add(d.id));
-      }
+    if (hub.productTypes.length === 0) {
+      return {
+        hub, date, lateEntries: [], absences: [], totalUsers: 0, onTimeCount: 0,
+        summary: { lateCount: 0, absentCount: 0, punctualityRate: 100 },
+      };
     }
-    const hubKioskIds = Array.from(kioskIdSet);
 
-    // ── 2. Obtener usuarios activos del hub ───────────────────────────────────
-    // Estrategia 1: por kiosko asignado (assignedKiosk → kiosko del hub)
+    // ── 1. Usuarios activos con productType del hub ───────────────────────────
+    // Ruta directa: User.productType ∈ hub.productTypes.
+    // No depende de kioscos ni de hubId (campos opcionales que pueden no estar poblados).
     const userMap = new Map<string, User>();
-    if (hubKioskIds.length > 0) {
-      const kioskUsers = await batchQuery<User>(hubKioskIds, batch =>
-        query(
-          collection(db, 'users'),
-          where('assignedKiosk', 'in', batch),
-          where('status', '==', 'active')
-        )
+    for (let i = 0; i < hub.productTypes.length; i += 10) {
+      const batch = hub.productTypes.slice(i, i + 10);
+      const snap = await getDocs(
+        query(collection(db, 'users'), where('productType', 'in', batch))
       );
-      kioskUsers.forEach(u => userMap.set(u.id, u));
+      snap.docs
+        .filter(d => d.data().status === 'active')
+        .forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as User));
     }
-
-    // Estrategia 2 (complemento): usuarios con hubId directo
+    // Complemento: usuarios con hubId asignado directamente (si existe)
     const directUsersSnap = await getDocs(
-      query(
-        collection(db, 'users'),
-        where('hubId', '==', hub.id),
-        where('status', '==', 'active')
-      )
+      query(collection(db, 'users'), where('hubId', '==', hub.id))
     );
-    directUsersSnap.docs.forEach(d => {
-      const u = { id: d.id, ...d.data() } as User;
-      userMap.set(u.id, u);
-    });
+    directUsersSnap.docs
+      .filter(d => d.data().status === 'active')
+      .forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as User));
 
     const users = Array.from(userMap.values());
     const userIds = users.map(u => u.id);
 
     if (userIds.length === 0) {
       return {
-        hub,
-        date,
-        lateEntries: [],
-        absences: [],
-        totalUsers: 0,
-        onTimeCount: 0,
+        hub, date, lateEntries: [], absences: [], totalUsers: 0, onTimeCount: 0,
         summary: { lateCount: 0, absentCount: 0, punctualityRate: 100 },
       };
     }
 
-    // ── 3. Check-ins de entrada del día ───────────────────────────────────────
-    // Filtramos retrasados en JS para no requerir índices compuestos en Firestore
-    const allCheckIns = await batchQuery<CheckIn>(userIds, batch =>
+    // ── 2. Entradas del día ───────────────────────────────────────────────────
+    // Solo type='entrada' (el sistema únicamente registra entradas).
+    // status='retrasado' se filtra en JS para evitar índices compuestos adicionales.
+    const allEntradas = await batchQuery<CheckIn>(userIds, batch =>
       query(
         collection(db, 'checkins'),
         where('userId', 'in', batch),
@@ -145,9 +118,9 @@ export class HubReportService {
         where('timestamp', '<=', Timestamp.fromDate(endOfDay))
       )
     );
-    const lateCheckIns = allCheckIns.filter(ci => ci.status === 'retrasado');
 
-    const lateEntries: LateEntry[] = lateCheckIns
+    const lateEntries: LateEntry[] = allEntradas
+      .filter(ci => ci.status === 'retrasado')
       .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis())
       .map(ci => ({
         userId: ci.userId,
@@ -157,8 +130,8 @@ export class HubReportService {
         minutesLate: ci.validationResults?.minutesLate ?? 0,
       }));
 
-    // ── 4. Faltas del día ─────────────────────────────────────────────────────
-    // Filtramos resolved en JS para no requerir índices compuestos en Firestore
+    // ── 3. Faltas (sin entrada) del día ───────────────────────────────────────
+    // Solo 'no_entry'; 'no_exit' y 'no_lunch_return' no aplican para este reporte.
     const issues = await batchQuery<AttendanceIssue>(userIds, batch =>
       query(
         collection(db, 'attendance_issues'),
@@ -166,7 +139,7 @@ export class HubReportService {
         where('date', '>=', Timestamp.fromDate(startOfDay)),
         where('date', '<=', Timestamp.fromDate(endOfDay))
       )
-    ).then(all => all.filter(i => !i.resolved));
+    ).then(all => all.filter(i => !i.resolved && i.type === 'no_entry'));
 
     const absences: Absence[] = issues.map(issue => ({
       userId: issue.userId,
@@ -176,17 +149,13 @@ export class HubReportService {
       typeLabel: ABSENCE_TYPE_LABELS[issue.type] ?? issue.type,
     }));
 
-    // ── 5. Resumen ────────────────────────────────────────────────────────────
+    // ── 4. Resumen ────────────────────────────────────────────────────────────
     const lateUserIds = new Set(lateEntries.map(e => e.userId));
-    const absentUserIds = new Set(
-      absences.filter(a => a.type === 'no_entry').map(a => a.userId)
-    );
+    const absentUserIds = new Set(absences.map(a => a.userId));
     const onTimeCount = users.filter(
       u => !lateUserIds.has(u.id) && !absentUserIds.has(u.id)
     ).length;
 
-    const lateCount = lateUserIds.size;
-    const absentCount = absentUserIds.size;
     const punctualityRate =
       users.length > 0
         ? Math.round((onTimeCount / users.length) * 100)
@@ -199,7 +168,7 @@ export class HubReportService {
       absences,
       totalUsers: users.length,
       onTimeCount,
-      summary: { lateCount, absentCount, punctualityRate },
+      summary: { lateCount: lateUserIds.size, absentCount: absentUserIds.size, punctualityRate },
     };
   }
 
