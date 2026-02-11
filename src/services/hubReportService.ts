@@ -68,31 +68,14 @@ export class HubReportService {
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    if (hub.productTypes.length === 0) {
-      return {
-        hub, date, lateEntries: [], absences: [], totalUsers: 0, onTimeCount: 0,
-        summary: { lateCount: 0, absentCount: 0, punctualityRate: 100 },
-      };
-    }
-
-    // ── 1. Usuarios activos con productType del hub ───────────────────────────
-    // Ruta directa: User.productType ∈ hub.productTypes.
-    // No depende de kioscos ni de hubId (campos opcionales que pueden no estar poblados).
+    // ── 1. Usuarios activos del hub ───────────────────────────────────────────
+    // Filtramos por hubId para obtener exactamente los usuarios de este hub
+    // y evitar que usuarios de otros hubs con el mismo productType aparezcan.
     const userMap = new Map<string, User>();
-    for (let i = 0; i < hub.productTypes.length; i += 10) {
-      const batch = hub.productTypes.slice(i, i + 10);
-      const snap = await getDocs(
-        query(collection(db, 'users'), where('productType', 'in', batch))
-      );
-      snap.docs
-        .filter(d => d.data().status === 'active')
-        .forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as User));
-    }
-    // Complemento: usuarios con hubId asignado directamente (si existe)
-    const directUsersSnap = await getDocs(
+    const usersSnap = await getDocs(
       query(collection(db, 'users'), where('hubId', '==', hub.id))
     );
-    directUsersSnap.docs
+    usersSnap.docs
       .filter(d => d.data().status === 'active')
       .forEach(d => userMap.set(d.id, { id: d.id, ...d.data() } as User));
 

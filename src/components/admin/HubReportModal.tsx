@@ -29,8 +29,10 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
   const [selectedDate, setSelectedDate] = useState(
     format(new Date(), 'yyyy-MM-dd')
   );
-  const [recipients, setRecipients] = useState<string>(
-    (hub.reportEmails ?? []).join('\n')
+  const [recipients, setRecipients] = useState<string[]>(hub.reportEmails ?? []);
+  const [newRecipient, setNewRecipient] = useState('');
+  const [emailSubject, setEmailSubject] = useState(
+    `Reporte Diario — ${hub.name} — ${format(new Date(), 'dd/MM/yyyy')}`
   );
   const [notes, setNotes] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
@@ -51,6 +53,23 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
       setEditedAbsences(report.absences);
     }
   }, [report]);
+
+  // Actualizar asunto cuando cambia la fecha
+  useEffect(() => {
+    const [year, month, day] = selectedDate.split('-');
+    setEmailSubject(`Reporte Diario — ${hub.name} — ${day}/${month}/${year}`);
+  }, [selectedDate]);
+
+  const addRecipient = () => {
+    const trimmed = newRecipient.trim();
+    if (!trimmed.includes('@') || recipients.includes(trimmed)) return;
+    setRecipients(prev => [...prev, trimmed]);
+    setNewRecipient('');
+  };
+
+  const removeRecipient = (idx: number) => {
+    setRecipients(prev => prev.filter((_, i) => i !== idx));
+  };
 
   const loadReport = async (date: Date) => {
     setState('loading');
@@ -97,10 +116,7 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
   };
 
   const handleSend = async () => {
-    const recipientList = recipients
-      .split(/[\n,;]+/)
-      .map(r => r.trim())
-      .filter(r => r.includes('@'));
+    const recipientList = recipients.filter(r => r.includes('@'));
 
     if (recipientList.length === 0) {
       setErrorMsg('Agrega al menos un correo destinatario antes de enviar.');
@@ -109,10 +125,9 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
 
     setState('sending');
     try {
-      const [year, month, day] = selectedDate.split('-');
       await sendViaGmail({
         to: recipientList,
-        subject: `Reporte Diario — ${hub.name} — ${day}/${month}/${year}`,
+        subject: emailSubject,
         html: getEmailHtml(),
       });
       setState('sent');
@@ -151,7 +166,7 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
               Reporte enviado correctamente
             </p>
             <p className="text-sm text-gray-500">
-              {recipients.split(/[\n,;]+/).filter(r => r.includes('@')).join(', ')}
+              {recipients.join(', ')}
             </p>
             <Button variant="secondary" onClick={onClose}>
               Cerrar
@@ -329,20 +344,74 @@ export function HubReportModal({ hub, onClose }: HubReportModalProps) {
               </div>
             )}
 
-            {/* Recipients */}
+            {/* Subject */}
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">
-                Destinatarios{' '}
-                <span className="text-gray-400">(uno por línea o separados por coma)</span>
+                Asunto del correo
               </label>
-              <textarea
-                rows={2}
-                value={recipients}
-                onChange={e => setRecipients(e.target.value)}
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={e => setEmailSubject(e.target.value)}
                 disabled={state === 'sending'}
-                placeholder="correo@ejemplo.com"
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
+            </div>
+
+            {/* Recipients */}
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-2">
+                Destinatarios
+              </label>
+
+              {/* Chips de correos actuales */}
+              <div className="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">
+                {recipients.length === 0 && (
+                  <span className="text-xs text-gray-400 italic">
+                    Sin destinatarios — agrega al menos uno antes de enviar
+                  </span>
+                )}
+                {recipients.map((email, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-0.5 rounded-full bg-primary-50 text-primary-700 text-xs font-medium border border-primary-200"
+                  >
+                    {email}
+                    <button
+                      type="button"
+                      onClick={() => removeRecipient(idx)}
+                      disabled={state === 'sending'}
+                      className="ml-0.5 text-primary-400 hover:text-primary-700 disabled:opacity-30 leading-none"
+                      title="Quitar destinatario"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              {/* Agregar nuevo correo */}
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={newRecipient}
+                  onChange={e => setNewRecipient(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); addRecipient(); }
+                  }}
+                  disabled={state === 'sending'}
+                  placeholder="correo@ejemplo.com"
+                  className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <button
+                  type="button"
+                  onClick={addRecipient}
+                  disabled={state === 'sending' || !newRecipient.includes('@')}
+                  className="px-3 py-1.5 text-sm rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Agregar
+                </button>
+              </div>
             </div>
 
             {/* Notes */}
