@@ -1,6 +1,5 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import * as nodemailer from 'nodemailer';
 import { validateCheckInPhoto } from './photoValidation';
 
 // Inicializar Firebase Admin
@@ -103,11 +102,11 @@ export const validatePhotoOnUpload = functions
 
 /**
  * Cloud Function: Envía el reporte diario de asistencia de un hub por correo.
- * Llama desde el cliente con: httpsCallable(functions, 'sendHubReport')
+ * Usa Resend (resend.com) — API key que no caduca, sin contraseñas.
  *
- * Requiere configuración SMTP en Firebase Functions:
- *   firebase functions:config:set smtp.host="..." smtp.port="587"
- *     smtp.user="..." smtp.pass="..." smtp.from="Registro Aviva <noreply@avivacredito.com>"
+ * Configuración (una sola vez):
+ *   firebase functions:config:set resend.key="re_xxxxxxxxxxxx"
+ *   firebase functions:config:set resend.from="Registro Aviva <noreply@avivacredito.com>"
  */
 export const sendHubReport = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -139,42 +138,41 @@ export const sendHubReport = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('invalid-argument', 'Parámetros incompletos');
   }
 
-  const smtpConfig = functions.config().smtp as {
-    host: string;
-    port: string;
-    user: string;
-    pass: string;
-    from?: string;
-  } | undefined;
-
-  if (!smtpConfig?.host || !smtpConfig?.user || !smtpConfig?.pass) {
+  const resendKey = (functions.config().resend as any)?.key as string | undefined;
+  if (!resendKey) {
     throw new functions.https.HttpsError(
       'failed-precondition',
-      'La configuración SMTP no está disponible. Configura las variables con firebase functions:config:set smtp.host smtp.user smtp.pass smtp.port'
+      'Falta la API key de Resend. Ejecuta: firebase functions:config:set resend.key="re_..."'
     );
   }
+  const fromAddress =
+    (functions.config().resend as any)?.from ||
+    'Registro Aviva <noreply@avivacredito.com>';
 
-  const transporter = nodemailer.createTransport({
-    host: smtpConfig.host,
-    port: parseInt(smtpConfig.port || '587', 10),
-    secure: smtpConfig.port === '465',
-    auth: { user: smtpConfig.user, pass: smtpConfig.pass },
-  });
-
-  const fromAddress = smtpConfig.from || `Registro Aviva <${smtpConfig.user}>`;
-
-  // Formatear fecha para el asunto
   const [year, month, day] = date.split('-');
   const dateFormatted = `${day}/${month}/${year}`;
 
-  await transporter.sendMail({
-    from: fromAddress,
-    to: recipients.join(', '),
-    subject: `Reporte Diario — ${hubName} — ${dateFormatted}`,
-    html,
+  // Node 18 tiene fetch nativo — sin paquetes externos
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${resendKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: fromAddress,
+      to: recipients,
+      subject: `Reporte Diario — ${hubName} — ${dateFormatted}`,
+      html,
+    }),
   });
 
-  // Guardar registro del envío en Firestore
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Resend error:', errorText);
+    throw new functions.https.HttpsError('internal', `Error al enviar el correo: ${errorText}`);
+  }
+
   await admin.firestore().collection('hub_report_logs').add({
     hubId,
     hubName,
