@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm } from '../../hooks';
 import { Button, Input, Select, Alert } from '../ui';
 import { userSchema } from '../../utils/validators';
 import { USER_ROLES, PRODUCT_TYPES } from '../../utils/constants';
-import { User, UserRole, ProductType } from '../../types';
+import { User, UserRole, ProductType, Hub, Kiosk } from '../../types';
+import { HubService } from '../../services/hubs';
+import { FirestoreService } from '../../services/firestore';
 
 interface UserFormProps {
   user?: User | null;
@@ -12,6 +14,10 @@ interface UserFormProps {
 }
 
 export function UserForm({ user, onSave, onCancel }: UserFormProps) {
+  const [hubs, setHubs] = useState<Hub[]>([]);
+  const [kiosks, setKiosks] = useState<Kiosk[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
+
   const {
     values,
     errors,
@@ -25,11 +31,13 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
       role: 'promotor',
       team: '',
       slackId: '',
-      status: 'active'
+      status: 'active',
+      hubId: '',
+      assignedKiosk: '',
+      assignedKioskName: ''
     },
     (values) => {
       try {
-        // Only validate if we have the required fields
         if (values.name && values.email && values.role) {
           userSchema.parse(values);
         }
@@ -45,6 +53,25 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
       }
     }
   );
+
+  useEffect(() => {
+    const loadOptions = async () => {
+      try {
+        setLoadingOptions(true);
+        const [hubList, kioskList] = await Promise.all([
+          HubService.getAllHubs(true),
+          FirestoreService.getActiveKiosks()
+        ]);
+        setHubs(hubList);
+        setKiosks(kioskList);
+      } catch (error) {
+        console.error('Error loading hubs/kiosks for form:', error);
+      } finally {
+        setLoadingOptions(false);
+      }
+    };
+    loadOptions();
+  }, []);
 
   const roleOptions = Object.entries(USER_ROLES).map(([key, label]) => ({
     value: key,
@@ -64,8 +91,40 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
     }))
   ];
 
+  const hubOptions = [
+    { value: '', label: 'Sin asignar' },
+    ...hubs.map(h => ({ value: h.id, label: h.name }))
+  ];
+
+  const kioskOptions = [
+    { value: '', label: 'Sin asignar' },
+    ...kiosks.map(k => ({ value: k.id, label: `${k.name} — ${k.city}, ${k.state}` }))
+  ];
+
+  const handleKioskChange = (kioskId: string) => {
+    if (!kioskId) {
+      setValue('assignedKiosk', undefined);
+      setValue('assignedKioskName', undefined);
+      return;
+    }
+    const kiosk = kiosks.find(k => k.id === kioskId);
+    setValue('assignedKiosk', kioskId);
+    setValue('assignedKioskName', kiosk?.name || kioskId);
+    // Auto-assign hub from kiosk if kiosk has a hub and user hasn't manually picked one
+    if (kiosk?.hubId && !values.hubId) {
+      setValue('hubId', kiosk.hubId);
+    }
+  };
+
   const handleFormSubmit = handleSubmit(async (formData) => {
-    await onSave(formData);
+    // Normalize empty strings to undefined so Firestore doesn't store empty fields
+    const cleaned: Partial<User> = { ...formData };
+    if (!cleaned.hubId) delete cleaned.hubId;
+    if (!cleaned.assignedKiosk) {
+      delete cleaned.assignedKiosk;
+      delete cleaned.assignedKioskName;
+    }
+    await onSave(cleaned);
   });
 
   const isEditing = !!user;
@@ -100,7 +159,7 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
           onChange={(e) => setValue('email', e.target.value)}
           error={errors.email}
           helpText="Debe ser un correo corporativo @avivacredito.com"
-          disabled={isEditing} // Can't change email for existing users
+          disabled={isEditing}
           required
         />
       </div>
@@ -135,6 +194,27 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
           options={productTypeOptions}
           error={errors.productType}
           helpText="Requerido para detección de faltas automática. Asigna el producto/departamento del usuario."
+        />
+      </div>
+
+      {/* Hub and Kiosk */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Select
+          label="Hub"
+          value={values.hubId || ''}
+          onChange={(e) => setValue('hubId', e.target.value || undefined)}
+          options={loadingOptions ? [{ value: '', label: 'Cargando hubs...' }] : hubOptions}
+          disabled={loadingOptions}
+          helpText="Grupo geográfico al que pertenece el usuario. Requerido para el reporte por Hub."
+        />
+
+        <Select
+          label="Kiosco Asignado"
+          value={values.assignedKiosk || ''}
+          onChange={(e) => handleKioskChange(e.target.value)}
+          options={loadingOptions ? [{ value: '', label: 'Cargando kioscos...' }] : kioskOptions}
+          disabled={loadingOptions}
+          helpText="Al seleccionar un kiosco se asigna su Hub automáticamente si no hay uno elegido."
         />
       </div>
 
