@@ -1,5 +1,5 @@
 import React from 'react';
-import { User } from '../../types';
+import { User, SalesGoal } from '../../types';
 import { StatusBadge } from '../common';
 import { Button } from '../ui';
 import { USER_ROLES } from '../../utils/constants';
@@ -9,7 +9,7 @@ import {
   EllipsisVerticalIcon,
   PowerIcon,
   TrashIcon,
-  EnvelopeIcon
+  ChartBarIcon
 } from '@heroicons/react/24/outline';
 import { Menu, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
@@ -19,9 +19,11 @@ interface UsersTableProps {
   onEdit: (user: User) => void;
   onToggle: (userId: string, currentStatus: string) => void;
   onDelete: (userId: string) => void;
+  onSetGoal?: (user: User) => void;
+  salesGoals?: Map<string, SalesGoal>;
 }
 
-export function UsersTable({ users, onEdit, onToggle, onDelete }: UsersTableProps) {
+export function UsersTable({ users, onEdit, onToggle, onDelete, onSetGoal, salesGoals }: UsersTableProps) {
   if (users.length === 0) {
     return (
       <div className="p-12 text-center">
@@ -59,6 +61,9 @@ export function UsersTable({ users, onEdit, onToggle, onDelete }: UsersTableProp
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Estado
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Meta Ventas
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Último Acceso
@@ -114,6 +119,26 @@ export function UsersTable({ users, onEdit, onToggle, onDelete }: UsersTableProp
               </td>
               
               <td className="px-6 py-4 whitespace-nowrap">
+                {salesGoals?.get(user.id) ? (
+                  <button
+                    onClick={() => onSetGoal?.(user)}
+                    className="text-sm font-medium text-primary-600 hover:text-primary-800"
+                    title="Editar meta"
+                  >
+                    {salesGoals.get(user.id)!.goal.toLocaleString('es-MX')}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onSetGoal?.(user)}
+                    className="text-xs text-gray-400 hover:text-primary-600"
+                    title="Asignar meta"
+                  >
+                    —
+                  </button>
+                )}
+              </td>
+
+              <td className="px-6 py-4 whitespace-nowrap">
                 <span className="text-sm text-gray-500">
                   {user.updatedAt ? formatRelativeTime(user.updatedAt) : 'Nunca'}
                 </span>
@@ -152,7 +177,21 @@ export function UsersTable({ users, onEdit, onToggle, onDelete }: UsersTableProp
                             </button>
                           )}
                         </Menu.Item>
-                        
+
+                        <Menu.Item>
+                          {({ active }) => (
+                            <button
+                              onClick={() => onSetGoal?.(user)}
+                              className={`${
+                                active ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                              } flex w-full px-4 py-2 text-sm`}
+                            >
+                              <ChartBarIcon className="mr-3 h-4 w-4" />
+                              Meta de ventas
+                            </button>
+                          )}
+                        </Menu.Item>
+
                         <Menu.Item>
                           {({ active }) => (
                             <button

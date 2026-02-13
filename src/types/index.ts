@@ -448,3 +448,15 @@ export interface DepartmentStats {
   attendance: number
   punctuality: number
 }
+
+// ================= SALES GOALS =================
+export interface SalesGoal {
+  id: string
+  userId: string
+  userName: string
+  period: string       // formato YYYY-MM  ej: "2025-03"
+  goal: number         // meta numérica (ventas, créditos, etc.)
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  createdBy: string
+}
