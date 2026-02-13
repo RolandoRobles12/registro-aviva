@@ -34,7 +34,8 @@ import {
   TimeOffFilters,
   PaginatedResponse,
   SystemConfig,
-  Holiday
+  Holiday,
+  SalesGoal
 } from '../types';
 import { ScheduleService } from './schedules';
 
@@ -1795,6 +1796,77 @@ export class FirestoreService {
     }
     
     throw lastError!;
+  }
+
+  // ================== SALES GOALS ==================
+
+  /**
+   * Get the sales goal for a specific user and period (YYYY-MM)
+   */
+  static async getSalesGoal(userId: string, period: string): Promise<SalesGoal | null> {
+    try {
+      const docId = `${userId}_${period}`;
+      const docRef = doc(db, 'sales_goals', docId);
+      const snapshot = await getDoc(docRef);
+      if (!snapshot.exists()) return null;
+      return { id: snapshot.id, ...snapshot.data() } as SalesGoal;
+    } catch (error) {
+      console.error('Error getting sales goal:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Set (create or update) a sales goal for a user and period
+   */
+  static async setSalesGoal(
+    userId: string,
+    userName: string,
+    period: string,
+    goal: number,
+    createdBy: string
+  ): Promise<void> {
+    const docId = `${userId}_${period}`;
+    const docRef = doc(db, 'sales_goals', docId);
+    const existing = await getDoc(docRef);
+    if (existing.exists()) {
+      await updateDoc(docRef, { goal, updatedAt: new Date() });
+    } else {
+      await setDoc(docRef, {
+        userId,
+        userName,
+        period,
+        goal,
+        createdBy,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+
+  /**
+   * Get all sales goals for a given period (YYYY-MM)
+   */
+  static async getSalesGoalsByPeriod(period: string): Promise<SalesGoal[]> {
+    try {
+      const q = query(
+        collection(db, 'sales_goals'),
+        where('period', '==', period)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SalesGoal));
+    } catch (error) {
+      console.error('Error getting sales goals by period:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete a sales goal
+   */
+  static async deleteSalesGoal(userId: string, period: string): Promise<void> {
+    const docId = `${userId}_${period}`;
+    await deleteDoc(doc(db, 'sales_goals', docId));
   }
 
   /**

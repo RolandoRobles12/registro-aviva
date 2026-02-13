@@ -4,9 +4,12 @@ import { db } from '../../config/firebase';
 import { UsersTable } from '../../components/admin/UsersTable';
 import { UserForm } from '../../components/admin/UserForm';
 import { UserFilters } from '../../components/admin/UserFilters';
+import { ImportSlackIdsModal } from '../../components/admin/ImportSlackIdsModal';
+import { SalesGoalModal } from '../../components/admin/SalesGoalModal';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
-import { User } from '../../types';
-import { PlusIcon, UserPlusIcon, ArrowPathIcon, MagnifyingGlassIcon, NoSymbolIcon, TrashIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { User, SalesGoal } from '../../types';
+import { FirestoreService } from '../../services/firestore';
+import { PlusIcon, UserPlusIcon, ArrowPathIcon, MagnifyingGlassIcon, NoSymbolIcon, TrashIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowUpTrayIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import { assignProductTypesFromCheckIns, getUsersWithoutProduct, syncHubIdFromKiosk } from '../../services/userMigration';
 
 export default function AdminUsers() {
@@ -25,11 +28,31 @@ export default function AdminUsers() {
   const [bulkEmailInput, setBulkEmailInput] = useState('');
   const [bulkResults, setBulkResults] = useState<{ found: User[]; notFound: string[] } | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [showImportSlack, setShowImportSlack] = useState(false);
+  const [showSalesGoal, setShowSalesGoal] = useState(false);
+  const [goalTargetUser, setGoalTargetUser] = useState<User | null>(null);
+  const [salesGoals, setSalesGoals] = useState<Map<string, SalesGoal>>(new Map());
+
+  const currentPeriod = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  })();
 
   useEffect(() => {
     loadUsers();
     checkUsersWithoutProduct();
+    loadSalesGoals();
   }, []);
+
+  const loadSalesGoals = async () => {
+    try {
+      const goals = await FirestoreService.getSalesGoalsByPeriod(currentPeriod);
+      const goalsMap = new Map(goals.map(g => [g.userId, g]));
+      setSalesGoals(goalsMap);
+    } catch (error) {
+      console.error('Error loading sales goals:', error);
+    }
+  };
 
   const checkUsersWithoutProduct = async () => {
     try {
@@ -148,6 +171,15 @@ export default function AdminUsers() {
   const handleAdd = () => {
     setEditingUser(null);
     setShowForm(true);
+  };
+
+  const handleSetGoal = (user: User) => {
+    setGoalTargetUser(user);
+    setShowSalesGoal(true);
+  };
+
+  const handleGoalSaved = async () => {
+    await loadSalesGoals();
   };
 
   const handleFormClose = () => {
@@ -338,6 +370,13 @@ export default function AdminUsers() {
               </Button>
             )}
             <Button
+              variant="secondary"
+              onClick={() => setShowImportSlack(true)}
+              leftIcon={<ArrowUpTrayIcon className="h-4 w-4" />}
+            >
+              Importar Slack IDs
+            </Button>
+            <Button
               variant="primary"
               onClick={handleAdd}
               leftIcon={<UserPlusIcon className="h-4 w-4" />}
@@ -516,6 +555,8 @@ export default function AdminUsers() {
             onEdit={handleEdit}
             onToggle={handleUserToggle}
             onDelete={handleUserDelete}
+            onSetGoal={handleSetGoal}
+            salesGoals={salesGoals}
           />
         )}
       </div>
@@ -535,6 +576,29 @@ export default function AdminUsers() {
           />
         </Modal>
       )}
+
+      {/* Import Slack IDs Modal */}
+      <ImportSlackIdsModal
+        isOpen={showImportSlack}
+        onClose={() => setShowImportSlack(false)}
+        onSuccess={async () => {
+          await loadUsers();
+          setSuccess('Slack IDs importados correctamente.');
+          setTimeout(() => setSuccess(null), 4000);
+        }}
+        users={users}
+      />
+
+      {/* Sales Goal Modal */}
+      <SalesGoalModal
+        isOpen={showSalesGoal}
+        onClose={() => {
+          setShowSalesGoal(false);
+          setGoalTargetUser(null);
+          handleGoalSaved();
+        }}
+        user={goalTargetUser}
+      />
     </div>
   );
 }
