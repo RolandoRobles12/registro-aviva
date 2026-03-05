@@ -724,7 +724,7 @@ export class FirestoreService {
         const checkInData: Omit<CheckIn, 'id'> = {
           userId,
           userName: user.name,
-          userEmail: user.email,
+          email: user.email,
           kioskId: formData.kioskId,
           kioskName: kiosk.name,
           productType: formData.productType || kiosk.productType,

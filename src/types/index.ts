@@ -72,7 +72,7 @@ export interface CheckIn {
   id: string
   userId: string
   userName: string
-  userEmail?: string
+  email?: string
   kioskId: string
   kioskName: string
   productType: ProductType
