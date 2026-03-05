@@ -724,6 +724,7 @@ export class FirestoreService {
         const checkInData: Omit<CheckIn, 'id'> = {
           userId,
           userName: user.name,
+          email: user.email,
           kioskId: formData.kioskId,
           kioskName: kiosk.name,
           productType: formData.productType || kiosk.productType,
@@ -1681,7 +1682,11 @@ export class FirestoreService {
         console.log(`🍽️ Found lunch check-in at: ${lastLunchCheckIn.toLocaleTimeString()}`);
       } else {
         console.warn('⚠️ No lunch check-in found for regreso_comida validation');
-        // Esto podría ser un error - el usuario no registró comida
+        throw new Error(
+          'No se encontró registro de inicio de hora de comida. ' +
+          'No puedes registrar el regreso de comida sin haber registrado primero la salida a comida. ' +
+          'Por favor reporta este regreso de comida a tu líder o Hub Manager.'
+        );
       }
     }
 
