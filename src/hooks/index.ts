@@ -7,8 +7,8 @@ import { ProductService } from '../services/products';
 // =================== PRODUCTS HOOK ===================
 
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { db } from '../config/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth, db } from '../config/firebase';
 
 export function useProducts() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -17,13 +17,12 @@ export function useProducts() {
   useEffect(() => {
     let unsubscribeFirestore: (() => void) | null = null;
 
-    // Wait for Firebase auth to be ready before subscribing to Firestore
-    const unsubscribeAuth = onAuthStateChanged(getAuth(), (firebaseUser) => {
-      // Clean up any previous Firestore subscription
-      if (unsubscribeFirestore) {
-        unsubscribeFirestore();
-        unsubscribeFirestore = null;
-      }
+    // Use the app's own auth instance (not getAuth()) to avoid instance mismatch.
+    // Only subscribe to Firestore once auth state is confirmed.
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      // Cancel any previous Firestore subscription before setting up a new one
+      unsubscribeFirestore?.();
+      unsubscribeFirestore = null;
 
       if (!firebaseUser) {
         setProducts([]);
@@ -39,14 +38,15 @@ export function useProducts() {
       unsubscribeFirestore = onSnapshot(
         q,
         (snap) => {
-          const list = snap.docs
-            .map(d => ({ id: d.id, ...d.data() } as Product))
-            .sort((a, b) => a.name.localeCompare(b.name, 'es'));
-          setProducts(list);
+          setProducts(
+            snap.docs
+              .map(d => ({ id: d.id, ...d.data() } as Product))
+              .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+          );
           setLoading(false);
         },
         (err) => {
-          console.error('Error loading products:', err);
+          console.error('useProducts error:', err);
           setLoading(false);
         }
       );
@@ -54,7 +54,7 @@ export function useProducts() {
 
     return () => {
       unsubscribeAuth();
-      if (unsubscribeFirestore) unsubscribeFirestore();
+      unsubscribeFirestore?.();
     };
   }, []);
 
