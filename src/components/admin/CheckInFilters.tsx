@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Button, Input, Select } from '../ui';
 import { CheckInFilters as Filters, Kiosk, Hub } from '../../types';
 import { PRODUCT_TYPES, CHECK_IN_TYPES, CHECK_IN_STATUS, MEXICAN_STATES } from '../../utils/constants';
+import { useProducts } from '../../hooks';
 import { MagnifyingGlassIcon, XMarkIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
 interface CheckInFiltersProps {
@@ -15,26 +16,17 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
   const [localFilters, setLocalFilters] = useState<Filters>(filters);
   const [isExpanded, setIsExpanded] = useState(false);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
+  const { productOptions } = useProducts();
 
   // Sync local state when parent filters change (e.g. external clear)
   useEffect(() => {
     setLocalFilters(filters);
   }, [filters]);
 
-  // Options for dropdowns — derived dynamically from kiosks when available
-  const productTypeOptions = useMemo(() => {
-    if (kiosks.length > 0) {
-      const uniqueTypes = [...new Set(kiosks.map(k => k.productType))].sort();
-      return uniqueTypes.map(pt => ({
-        value: pt,
-        label: PRODUCT_TYPES[pt as keyof typeof PRODUCT_TYPES] || pt
-      }));
-    }
-    return Object.entries(PRODUCT_TYPES || {}).map(([key, label]) => ({
-      value: key,
-      label
-    }));
-  }, [kiosks]);
+  // Products from Firestore (real-time); fallback to hardcoded if not loaded yet
+  const productTypeOptions = productOptions.length > 0
+    ? productOptions
+    : Object.entries(PRODUCT_TYPES || {}).map(([key, label]) => ({ value: key, label }));
 
   const checkInTypeOptions = Object.entries(CHECK_IN_TYPES || {}).map(([key, label]) => ({
     value: key,

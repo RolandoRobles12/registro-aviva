@@ -6,29 +6,39 @@ import { ProductService } from '../services/products';
 
 // =================== PRODUCTS HOOK ===================
 
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { db } from '../config/firebase';
+
 export function useProducts() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const reload = useCallback(async () => {
-    try {
-      setLoading(true);
-      const list = await ProductService.getActiveProducts();
-      setProducts(list);
-    } catch (e) {
-      console.error('Error loading products:', e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    reload();
-  }, [reload]);
+    // Real-time listener — new products appear instantly in every dropdown
+    const q = query(
+      collection(db, 'products'),
+      where('status', '==', 'active'),
+      orderBy('name', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Error loading products:', err);
+        setLoading(false);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
 
   const productOptions = products.map(p => ({ value: p.id, label: p.name }));
 
-  return { products, productOptions, loading, reload };
+  return { products, productOptions, loading };
 }
 
 // =================== GEOLOCATION HOOK ===================

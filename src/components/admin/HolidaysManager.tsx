@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button, Input, Select, Modal } from '../ui';
 import { FirestoreService } from '../../services/firestore';
 import { Holiday, ProductType } from '../../types';
+import { useProducts } from '../../hooks';
 import { PRODUCT_TYPES } from '../../utils/constants';
 import { formatDate } from '../../utils/formatters';
 import { 
@@ -13,6 +14,7 @@ import { addDoc, collection, doc, deleteDoc, Timestamp } from 'firebase/firestor
 import { db } from '../../config/firebase';
 
 export function HolidaysManager() {
+  const { products } = useProducts();
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -145,7 +147,7 @@ export function HolidaysManager() {
                     </span>
                     {holiday.productTypes && (
                       <span className="text-xs">
-                        Solo: {holiday.productTypes.map(pt => PRODUCT_TYPES[pt]).join(', ')}
+                        Solo: {holiday.productTypes.map(pt => products.find(p => p.id === pt)?.name ?? PRODUCT_TYPES[pt as keyof typeof PRODUCT_TYPES] ?? pt).join(', ')}
                       </span>
                     )}
                   </div>
@@ -185,6 +187,7 @@ interface HolidayFormProps {
 }
 
 function HolidayForm({ year, onSave, onCancel }: HolidayFormProps) {
+  const { products } = useProducts();
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
   const [type, setType] = useState<'official' | 'corporate'>('official');
@@ -196,11 +199,11 @@ function HolidayForm({ year, onSave, onCancel }: HolidayFormProps) {
     { value: 'corporate', label: 'Corporativo (configurable)' }
   ];
 
-  const productOptions = Object.entries(PRODUCT_TYPES).map(([key, label]) => ({
-    value: key,
-    label,
-    checked: productTypes.includes(key as ProductType)
-  }));
+  const productOptions = (
+    products.length > 0
+      ? products.map(p => ({ value: p.id, label: p.name }))
+      : Object.entries(PRODUCT_TYPES).map(([key, label]) => ({ value: key, label }))
+  ).map(opt => ({ ...opt, checked: productTypes.includes(opt.value as ProductType) }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
