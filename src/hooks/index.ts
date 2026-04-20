@@ -7,6 +7,7 @@ import { ProductService } from '../services/products';
 // =================== PRODUCTS HOOK ===================
 
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../config/firebase';
 
 export function useProducts() {
@@ -14,29 +15,47 @@ export function useProducts() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Real-time listener — no orderBy to avoid requiring a composite Firestore index;
-    // sorting is done in JS instead.
-    const q = query(
-      collection(db, 'products'),
-      where('status', '==', 'active')
-    );
+    let unsubscribeFirestore: (() => void) | null = null;
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs
-          .map(d => ({ id: d.id, ...d.data() } as Product))
-          .sort((a, b) => a.name.localeCompare(b.name, 'es'));
-        setProducts(list);
-        setLoading(false);
-      },
-      (err) => {
-        console.error('Error loading products:', err);
-        setLoading(false);
+    // Wait for Firebase auth to be ready before subscribing to Firestore
+    const unsubscribeAuth = onAuthStateChanged(getAuth(), (firebaseUser) => {
+      // Clean up any previous Firestore subscription
+      if (unsubscribeFirestore) {
+        unsubscribeFirestore();
+        unsubscribeFirestore = null;
       }
-    );
 
-    return unsubscribe;
+      if (!firebaseUser) {
+        setProducts([]);
+        setLoading(false);
+        return;
+      }
+
+      const q = query(
+        collection(db, 'products'),
+        where('status', '==', 'active')
+      );
+
+      unsubscribeFirestore = onSnapshot(
+        q,
+        (snap) => {
+          const list = snap.docs
+            .map(d => ({ id: d.id, ...d.data() } as Product))
+            .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+          setProducts(list);
+          setLoading(false);
+        },
+        (err) => {
+          console.error('Error loading products:', err);
+          setLoading(false);
+        }
+      );
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeFirestore) unsubscribeFirestore();
+    };
   }, []);
 
   const productOptions = products.map(p => ({ value: p.id, label: p.name }));

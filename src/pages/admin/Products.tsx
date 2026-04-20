@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
 import { Product } from '../../types';
 import { ProductService } from '../../services/products';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   PlusIcon,
   PencilIcon,
@@ -12,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function AdminProducts() {
+  const { user } = useAuth();
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +27,7 @@ export default function AdminProducts() {
   const [seeding, setSeeding] = useState(false);
 
   const reload = useCallback(async () => {
+    if (!user) return;
     try {
       setLoading(true);
       const list = await ProductService.getProducts();
@@ -34,7 +37,7 @@ export default function AdminProducts() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { reload(); }, [reload]);
 
