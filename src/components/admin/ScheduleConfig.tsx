@@ -2,11 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Input, Select, Alert } from '../ui';
 import { ScheduleService } from '../../services/schedules';
+import { useProducts } from '../../hooks';
 import { PRODUCT_TYPES } from '../../utils/constants';
 import { ProductSchedule, ProductType } from '../../types';
 import { ClockIcon } from '@heroicons/react/24/outline';
 
 export function ScheduleConfig() {
+  const { productOptions } = useProducts();
   const [selectedProduct, setSelectedProduct] = useState<ProductType>('BA');
   const [schedule, setSchedule] = useState<ProductSchedule | null>(null);
   const [saving, setSaving] = useState(false);
@@ -85,10 +87,9 @@ export function ScheduleConfig() {
     { value: 6, label: 'Sábado', shortLabel: 'S' }
   ];
 
-  const productOptions = Object.entries(PRODUCT_TYPES).map(([key, label]) => ({
-    value: key,
-    label
-  }));
+  const scheduleProductOptions = productOptions.length > 0
+    ? productOptions
+    : Object.entries(PRODUCT_TYPES).map(([key, label]) => ({ value: key, label }));
 
   if (!schedule) {
     return (
@@ -114,7 +115,7 @@ export function ScheduleConfig() {
           label="Configurar horarios para"
           value={selectedProduct}
           onChange={(e) => setSelectedProduct(e.target.value as ProductType)}
-          options={productOptions}
+          options={scheduleProductOptions}
         />
       </div>
 

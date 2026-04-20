@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth, usePermissions } from '../../contexts/AuthContext';
 import { ScheduleService } from '../../services/schedules';
 import { LoadingSpinner, Alert, Button, Select } from '../../components/ui';
+import { useProducts } from '../../hooks';
 import { PRODUCT_TYPES } from '../../utils/constants';
 import { ProductSchedule, ProductType } from '../../types';
 import { 
@@ -15,6 +16,7 @@ import {
 export default function AdminSchedules() {
   const { user } = useAuth();
   const { isSuperAdmin } = usePermissions();
+  const { productOptions } = useProducts();
   const [schedules, setSchedules] = useState<ProductSchedule[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<ProductType>('BA');
   const [currentSchedule, setCurrentSchedule] = useState<ProductSchedule | null>(null);
@@ -106,10 +108,9 @@ export default function AdminSchedules() {
     { value: 6, label: 'Sábado', shortLabel: 'S' }
   ];
 
-  const productOptions = Object.entries(PRODUCT_TYPES).map(([key, label]) => ({
-    value: key,
-    label
-  }));
+  const schedulesProductOptions = productOptions.length > 0
+    ? productOptions
+    : Object.entries(PRODUCT_TYPES).map(([key, label]) => ({ value: key, label }));
 
   // Only super admins can access schedule configuration
   if (!isSuperAdmin()) {
@@ -174,11 +175,11 @@ export default function AdminSchedules() {
 
       {/* Schedule Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {Object.entries(PRODUCT_TYPES).map(([key, label]) => {
+        {schedulesProductOptions.map(({ value: key, label }) => {
           const schedule = schedules.find(s => s.productType === key);
           return (
-            <div 
-              key={key} 
+            <div
+              key={key}
               className={`bg-white rounded-lg border p-4 cursor-pointer transition-all hover:shadow-md ${
                 selectedProduct === key ? 'ring-2 ring-primary-500 border-primary-200' : ''
               }`}
@@ -216,7 +217,7 @@ export default function AdminSchedules() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-medium text-primary-900">
-                  Configurando: {PRODUCT_TYPES[currentSchedule.productType]}
+                  Configurando: {schedulesProductOptions.find(o => o.value === currentSchedule.productType)?.label ?? currentSchedule.productType}
                 </h2>
                 <p className="text-sm text-primary-700">
                   Ajusta los horarios y días laborales para este tipo de producto

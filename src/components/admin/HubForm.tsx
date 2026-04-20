@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useForm } from '../../hooks';
+import { useForm, useProducts } from '../../hooks';
 import { Button, Input, Alert } from '../ui';
 import { Hub, ProductType } from '../../types';
-import { PRODUCT_TYPES } from '../../utils/constants';
 import { HubService } from '../../services/hubs';
 
 interface HubFormProps {
@@ -12,6 +11,7 @@ interface HubFormProps {
 }
 
 export function HubForm({ hub, onSave, onCancel }: HubFormProps) {
+  const { products } = useProducts();
   const [availableStates, setAvailableStates] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<string[]>(hub?.states || []);
   const [selectedProducts, setSelectedProducts] = useState<ProductType[]>(hub?.productTypes || []);
@@ -251,20 +251,20 @@ export function HubForm({ hub, onSave, onCancel }: HubFormProps) {
         </label>
 
         <div className="border rounded-lg p-4 bg-gray-50 space-y-2">
-          {Object.entries(PRODUCT_TYPES).map(([key, label]) => (
+          {products.map(p => (
             <label
-              key={key}
+              key={p.id}
               className="flex items-center space-x-3 cursor-pointer hover:bg-gray-100 p-2 rounded"
             >
               <input
                 type="checkbox"
-                checked={selectedProducts.includes(key as ProductType)}
-                onChange={() => handleToggleProduct(key as ProductType)}
+                checked={selectedProducts.includes(p.id as ProductType)}
+                onChange={() => handleToggleProduct(p.id as ProductType)}
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <div className="flex-1">
-                <span className="text-sm font-medium">{label}</span>
-                <span className="text-xs text-gray-500 ml-2">({key})</span>
+                <span className="text-sm font-medium">{p.name}</span>
+                <span className="text-xs text-gray-500 ml-2">({p.id})</span>
               </div>
             </label>
           ))}

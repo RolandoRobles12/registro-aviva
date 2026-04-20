@@ -8,10 +8,12 @@ import { Button, Input, Select, Alert } from '../../components/ui';
 import { Toast, useToast } from '../../components/ui/Toast'; // ✅ TOAST SYSTEM
 import { MapPinIcon, CameraIcon, ClockIcon, CalendarDaysIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { PRODUCT_TYPES, CHECK_IN_TYPES, TIME_OFF_TYPES } from '../../utils/constants';
+import { useProducts } from '../../hooks';
 import { CheckInFormData, TimeOffFormData, Kiosk } from '../../types';
 
 export default function SimpleCheckIn() {
   const { user, signOut } = useAuth();
+  const { products: dynamicProducts } = useProducts();
 
   const handleSignOut = async () => {
     try {
@@ -543,8 +545,11 @@ export default function SimpleCheckIn() {
               required
             >
               <option value="">Selecciona un producto</option>
-              {Object.entries(PRODUCT_TYPES).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
+              {(dynamicProducts.length > 0
+                ? dynamicProducts.map(p => ({ id: p.id, name: p.name }))
+                : Object.entries(PRODUCT_TYPES).map(([id, name]) => ({ id, name }))
+              ).map(({ id, name }) => (
+                <option key={id} value={id}>{name}</option>
               ))}
             </select>
           </div>
