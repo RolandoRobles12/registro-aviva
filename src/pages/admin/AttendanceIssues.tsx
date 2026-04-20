@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { AttendanceService } from '../../services/attendance';
 import { AttendanceIssuesTable } from '../../components/admin/AttendanceIssuesTable';
-import { LoadingSpinner, Alert, Button } from '../../components/ui';
+import { LoadingSpinner, Alert, Button, Select } from '../../components/ui';
 import { AttendanceIssue } from '../../types';
+import { PRODUCT_TYPES } from '../../utils/constants';
 import {
   ExclamationTriangleIcon,
   CheckCircleIcon,
   ArrowPathIcon,
   FunnelIcon,
-  InformationCircleIcon
+  InformationCircleIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 export default function AdminAttendanceIssues() {
@@ -19,8 +21,22 @@ export default function AdminAttendanceIssues() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showResolved, setShowResolved] = useState(false);
+  const [productFilter, setProductFilter] = useState<string>('');
   const [diagnosis, setDiagnosis] = useState<any>(null);
   const [showDiagnosis, setShowDiagnosis] = useState(false);
+
+  const availableProducts = useMemo(() => {
+    const types = [...new Set(issues.map(i => i.productType).filter(Boolean))].sort();
+    return types.map(pt => ({
+      value: pt,
+      label: PRODUCT_TYPES[pt as keyof typeof PRODUCT_TYPES] || pt
+    }));
+  }, [issues]);
+
+  const filteredIssues = useMemo(() => {
+    if (!productFilter) return issues;
+    return issues.filter(i => i.productType === productFilter);
+  }, [issues, productFilter]);
 
   useEffect(() => {
     loadIssues();
@@ -91,8 +107,8 @@ export default function AdminAttendanceIssues() {
     }
   };
 
-  const pendingCount = issues.filter(i => !i.resolved).length;
-  const resolvedCount = issues.filter(i => i.resolved).length;
+  const pendingCount = filteredIssues.filter(i => !i.resolved).length;
+  const resolvedCount = filteredIssues.filter(i => i.resolved).length;
 
   return (
     <div className="space-y-6">
@@ -182,9 +198,32 @@ export default function AdminAttendanceIssues() {
 
       {/* Filters */}
       <div className="bg-white shadow rounded-lg p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h3 className="text-lg font-medium text-gray-900">Filtros</h3>
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Product filter */}
+            <div className="flex items-center gap-2">
+              <select
+                value={productFilter}
+                onChange={(e) => setProductFilter(e.target.value)}
+                className="text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Todos los productos</option>
+                {availableProducts.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              {productFilter && (
+                <button
+                  onClick={() => setProductFilter('')}
+                  className="text-gray-400 hover:text-gray-600"
+                  title="Limpiar filtro de producto"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {/* Resolved toggle */}
             <label className="flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -311,9 +350,9 @@ export default function AdminAttendanceIssues() {
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium text-gray-900">
             Lista de Faltas
-            {issues.length > 0 && (
+            {filteredIssues.length > 0 && (
               <span className="ml-2 text-sm text-gray-500">
-                ({issues.length} resultados)
+                ({filteredIssues.length}{issues.length !== filteredIssues.length ? ` de ${issues.length}` : ''} resultados)
               </span>
             )}
           </h3>
@@ -325,7 +364,7 @@ export default function AdminAttendanceIssues() {
           </div>
         ) : (
           <AttendanceIssuesTable
-            issues={issues}
+            issues={filteredIssues}
             onResolve={handleResolve}
           />
         )}

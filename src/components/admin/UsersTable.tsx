@@ -139,9 +139,13 @@ export function UsersTable({ users, onEdit, onToggle, onDelete, onSetGoal, sales
               </td>
 
               <td className="px-6 py-4 whitespace-nowrap">
-                <span className="text-sm text-gray-500">
-                  {user.updatedAt ? formatRelativeTime(user.updatedAt) : 'Nunca'}
-                </span>
+                {user.lastCheckInAt ? (
+                  <span className="text-sm text-gray-700" title="Último check-in registrado">
+                    {formatRelativeTime(user.lastCheckInAt)}
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-400 italic">Sin registro</span>
+                )}
               </td>
               
               <td className="px-6 py-4 whitespace-nowrap">

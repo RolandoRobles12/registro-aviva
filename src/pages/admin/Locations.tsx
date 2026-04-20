@@ -1,5 +1,5 @@
 // src/pages/admin/Locations.tsx - Versión corregida
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { LocationsTable } from '../../components/admin/LocationsTable';
@@ -7,7 +7,8 @@ import { LocationForm } from '../../components/admin/LocationForm';
 import { ImportLocationsModal } from '../../components/admin/ImportLocationsModal';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
 import { Kiosk } from '../../types';
-import { PlusIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline';
+import { PRODUCT_TYPES } from '../../utils/constants';
+import { PlusIcon, ArrowUpTrayIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 // Funciones locales para manejar kioscos
 const saveKiosk = async (kioskData: Omit<Kiosk, 'createdAt' | 'updatedAt'>): Promise<string> => {
@@ -89,6 +90,20 @@ export default function AdminLocations() {
   const [showImport, setShowImport] = useState(false);
   const [editingKiosk, setEditingKiosk] = useState<Kiosk | null>(null);
   const [saving, setSaving] = useState(false);
+  const [productFilter, setProductFilter] = useState<string>('');
+
+  const availableProducts = useMemo(() => {
+    const types = [...new Set(kiosks.map(k => k.productType).filter(Boolean))].sort();
+    return types.map(pt => ({
+      value: pt,
+      label: PRODUCT_TYPES[pt as keyof typeof PRODUCT_TYPES] || pt
+    }));
+  }, [kiosks]);
+
+  const filteredKiosks = useMemo(() => {
+    if (!productFilter) return kiosks;
+    return kiosks.filter(k => k.productType === productFilter);
+  }, [kiosks, productFilter]);
 
   useEffect(() => {
     loadKiosks();
@@ -266,6 +281,39 @@ export default function AdminLocations() {
         </div>
       )}
 
+      {/* Product Filter */}
+      <div className="bg-white shadow rounded-lg p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-sm font-medium text-gray-700">Filtrar por producto:</span>
+          <div className="flex items-center gap-2">
+            <select
+              value={productFilter}
+              onChange={(e) => setProductFilter(e.target.value)}
+              className="text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Todos los productos</option>
+              {availableProducts.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            {productFilter && (
+              <button
+                onClick={() => setProductFilter('')}
+                className="text-gray-400 hover:text-gray-600"
+                title="Limpiar filtro"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {productFilter && (
+            <span className="text-xs text-gray-500">
+              Mostrando {filteredKiosks.length} de {kiosks.length} kioscos
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Locations Table */}
       <div className="bg-white shadow rounded-lg">
         <div className="px-6 py-4 border-b border-gray-200">
@@ -273,7 +321,7 @@ export default function AdminLocations() {
             Lista de Kioscos
             {kiosks.length > 0 && (
               <span className="ml-2 text-sm text-gray-500">
-                ({kiosks.length} total)
+                ({filteredKiosks.length}{kiosks.length !== filteredKiosks.length ? ` de ${kiosks.length}` : ''} total)
               </span>
             )}
           </h3>
@@ -286,7 +334,7 @@ export default function AdminLocations() {
           </div>
         ) : (
           <LocationsTable
-            kiosks={kiosks}
+            kiosks={filteredKiosks}
             onEdit={handleEdit}
             onUpdate={loadKiosks}
           />
