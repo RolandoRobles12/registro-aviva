@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button, Input, Select } from '../ui';
 import { CheckInFilters as Filters, Kiosk, Hub } from '../../types';
 import { PRODUCT_TYPES, CHECK_IN_TYPES, CHECK_IN_STATUS, MEXICAN_STATES } from '../../utils/constants';
@@ -16,11 +16,25 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
   const [isExpanded, setIsExpanded] = useState(false);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
 
-  // Options for dropdowns - con verificación de que los datos existan
-  const productTypeOptions = Object.entries(PRODUCT_TYPES || {}).map(([key, label]) => ({
-    value: key,
-    label
-  }));
+  // Sync local state when parent filters change (e.g. external clear)
+  useEffect(() => {
+    setLocalFilters(filters);
+  }, [filters]);
+
+  // Options for dropdowns — derived dynamically from kiosks when available
+  const productTypeOptions = useMemo(() => {
+    if (kiosks.length > 0) {
+      const uniqueTypes = [...new Set(kiosks.map(k => k.productType))].sort();
+      return uniqueTypes.map(pt => ({
+        value: pt,
+        label: PRODUCT_TYPES[pt as keyof typeof PRODUCT_TYPES] || pt
+      }));
+    }
+    return Object.entries(PRODUCT_TYPES || {}).map(([key, label]) => ({
+      value: key,
+      label
+    }));
+  }, [kiosks]);
 
   const checkInTypeOptions = Object.entries(CHECK_IN_TYPES || {}).map(([key, label]) => ({
     value: key,
@@ -155,17 +169,14 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
 
   const setTodayFilter = () => {
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+    // Use local date parts to avoid UTC offset shifting the day
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
 
-    // Set both start and end to today to filter only today's check-ins
     const startDate = new Date(todayStr + 'T00:00:00');
     const endDate = new Date(todayStr + 'T23:59:59');
-
-    console.log('📅 Set filter to today only:', todayStr);
-    console.log('  Start (UTC):', startDate.toISOString());
-    console.log('  Start (Local):', startDate.toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }));
-    console.log('  End (UTC):', endDate.toISOString());
-    console.log('  End (Local):', endDate.toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }));
 
     setLocalFilters(prev => ({
       ...prev,
@@ -178,7 +189,11 @@ export function CheckInFilters({ filters, onFiltersChange, kiosks = [], hubs = [
   );
 
   const formatDateForInput = (date: Date | undefined) => {
-    return date ? date.toISOString().split('T')[0] : '';
+    if (!date) return '';
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   };
 
   // Determine which filter will be used as primary (for Firestore optimization)

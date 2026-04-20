@@ -63,6 +63,7 @@ export interface User {
   supervisorId?: string // NUEVO: ID del supervisor asignado
   supervisorName?: string // NUEVO: Nombre del supervisor
   totalLateMinutes?: number // NUEVO: Total de minutos acumulados de retraso
+  lastCheckInAt?: Timestamp // Último check-in registrado (actualizado automáticamente)
   createdAt: Timestamp
   updatedAt: Timestamp
 }

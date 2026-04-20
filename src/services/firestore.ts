@@ -754,6 +754,15 @@ export class FirestoreService {
 
       console.log('Check-in created with ID:', result);
 
+      // Update user's lastCheckInAt for real "last access" display
+      try {
+        await updateDoc(doc(db, 'users', userId), {
+          lastCheckInAt: serverTimestamp()
+        });
+      } catch (e) {
+        console.warn('Could not update user lastCheckInAt:', e);
+      }
+
       // ========== MOTOR DE ACCIONES DE PUNTUALIDAD ==========
       // Ejecutar acciones después de la transacción para evitar conflictos
       try {
