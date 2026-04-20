@@ -6,7 +6,7 @@ import { ProductService } from '../services/products';
 
 // =================== PRODUCTS HOOK ===================
 
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 export function useProducts() {
@@ -14,17 +14,20 @@ export function useProducts() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Real-time listener — new products appear instantly in every dropdown
+    // Real-time listener — no orderBy to avoid requiring a composite Firestore index;
+    // sorting is done in JS instead.
     const q = query(
       collection(db, 'products'),
-      where('status', '==', 'active'),
-      orderBy('name', 'asc')
+      where('status', '==', 'active')
     );
 
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
+        const list = snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as Product))
+          .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+        setProducts(list);
         setLoading(false);
       },
       (err) => {

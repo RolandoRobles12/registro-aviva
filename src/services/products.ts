@@ -6,7 +6,6 @@ import {
   updateDoc,
   query,
   where,
-  orderBy,
   serverTimestamp,
   Timestamp
 } from 'firebase/firestore';
@@ -18,19 +17,18 @@ export class ProductService {
   private static readonly COLLECTION = 'products';
 
   static async getProducts(): Promise<Product[]> {
-    const q = query(collection(db, this.COLLECTION), orderBy('name', 'asc'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+    const snap = await getDocs(collection(db, this.COLLECTION));
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as Product))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
   }
 
   static async getActiveProducts(): Promise<Product[]> {
-    const q = query(
-      collection(db, this.COLLECTION),
-      where('status', '==', 'active'),
-      orderBy('name', 'asc')
-    );
+    const q = query(collection(db, this.COLLECTION), where('status', '==', 'active'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as Product))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
   }
 
   static async saveProduct(id: string, name: string): Promise<void> {
