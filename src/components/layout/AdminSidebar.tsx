@@ -14,7 +14,8 @@ import {
   Cog6ToothIcon,
   AdjustmentsHorizontalIcon,
   CubeIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  TagIcon
 } from '@heroicons/react/24/outline';
 
 interface AdminSidebarProps {
@@ -58,6 +59,11 @@ const navigation = [
     name: 'Hubs', // NUEVA OPCIÓN - HUBS
     href: '/admin/hubs',
     icon: CubeIcon
+  },
+  {
+    name: 'Productos',
+    href: '/admin/products',
+    icon: TagIcon
   },
   {
     name: 'Horarios', // NUEVA OPCIÓN

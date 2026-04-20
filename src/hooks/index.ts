@@ -1,7 +1,35 @@
 // src/hooks/index.ts
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LocationData, LocationPermission, CameraCapture } from '../types';
+import { LocationData, LocationPermission, CameraCapture, Product } from '../types';
+import { ProductService } from '../services/products';
+
+// =================== PRODUCTS HOOK ===================
+
+export function useProducts() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const reload = useCallback(async () => {
+    try {
+      setLoading(true);
+      const list = await ProductService.getActiveProducts();
+      setProducts(list);
+    } catch (e) {
+      console.error('Error loading products:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const productOptions = products.map(p => ({ value: p.id, label: p.name }));
+
+  return { products, productOptions, loading, reload };
+}
 
 // =================== GEOLOCATION HOOK ===================
 

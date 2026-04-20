@@ -20,6 +20,7 @@ import AdminSchedules from './pages/admin/Schedules'; // NUEVA PÁGINA
 import AdminReports from './pages/admin/Reports';
 import AdminHubs from './pages/admin/Hubs'; // NUEVA PÁGINA - HUBS
 import AdminAttendanceIssues from './pages/admin/AttendanceIssues'; // NUEVA PÁGINA - FALTAS
+import AdminProducts from './pages/admin/Products'; // GESTIÓN DE PRODUCTOS
 
 // Layouts
 import EmployeeLayout from './components/layout/EmployeeLayout';
@@ -75,6 +76,7 @@ function App() {
               <Route path="locations" element={<AdminLocations />} />
               <Route path="schedules" element={<AdminSchedules />} /> {/* NUEVA RUTA */}
               <Route path="hubs" element={<AdminHubs />} /> {/* NUEVA RUTA - HUBS */}
+              <Route path="products" element={<AdminProducts />} />
               <Route path="statistics" element={<AdminStatistics />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="configuration" element={<AdminConfiguration />} />
