@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useForm } from '../../hooks';
+import { useForm, useProducts } from '../../hooks';
 import { Button, Input, Select, Alert } from '../ui';
 import { userSchema } from '../../utils/validators';
 import { USER_ROLES, PRODUCT_TYPES } from '../../utils/constants';
@@ -14,6 +14,7 @@ interface UserFormProps {
 }
 
 export function UserForm({ user, onSave, onCancel }: UserFormProps) {
+  const { productOptions } = useProducts();
   const [hubs, setHubs] = useState<Hub[]>([]);
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(true);
@@ -85,10 +86,9 @@ export function UserForm({ user, onSave, onCancel }: UserFormProps) {
 
   const productTypeOptions = [
     { value: '', label: 'Sin asignar' },
-    ...Object.entries(PRODUCT_TYPES).map(([key, label]) => ({
-      value: key,
-      label
-    }))
+    ...(productOptions.length > 0
+      ? productOptions
+      : Object.entries(PRODUCT_TYPES).map(([key, label]) => ({ value: key, label })))
   ];
 
   const hubOptions = [

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Button, Input, Select } from '../ui';
 import { PRODUCT_TYPES, MEXICAN_STATES } from '../../utils/constants';
 import { Kiosk } from '../../types';
+import { useProducts } from '../../hooks';
 
 interface LocationFormProps {
   kiosk?: Kiosk | null;
@@ -12,6 +13,8 @@ interface LocationFormProps {
 }
 
 export function LocationForm({ kiosk, onSave, onCancel, saving = false }: LocationFormProps) {
+  const { productOptions } = useProducts();
+
   // Estados del formulario
   const [formData, setFormData] = useState({
     id: '',
@@ -70,10 +73,10 @@ export function LocationForm({ kiosk, onSave, onCancel, saving = false }: Locati
     setErrors({});
   }, [kiosk]);
 
-  const productTypeOptions = Object.entries(PRODUCT_TYPES).map(([key, label]) => ({
-    value: key,
-    label
-  }));
+  // Use dynamic products; fall back to hardcoded if Firestore hasn't loaded yet
+  const productTypeOptions = productOptions.length > 0
+    ? productOptions
+    : Object.entries(PRODUCT_TYPES).map(([key, label]) => ({ value: key, label }));
 
   const stateOptions = MEXICAN_STATES.map(state => ({
     value: state,
@@ -335,7 +338,9 @@ export function LocationForm({ kiosk, onSave, onCancel, saving = false }: Locati
           </div>
           <div>
             <span className="text-gray-600">Producto:</span>
-            <p className="font-medium">{PRODUCT_TYPES[formData.productType]}</p>
+            <p className="font-medium">
+              {productTypeOptions.find(o => o.value === formData.productType)?.label || formData.productType}
+            </p>
           </div>
         </div>
       </div>

@@ -2,7 +2,8 @@
 import { Timestamp } from 'firebase/firestore'
 
 // ================= BASIC TYPES =================
-export type ProductType = 'BA' | 'Aviva_Contigo' | 'Aviva_Tu_Negocio' | 'Casa_Marchand' | 'Construrama' | 'Disensa'
+// ProductType is dynamic — actual values come from the `products` Firestore collection
+export type ProductType = string
 
 export type UserRole = 'super_admin' | 'admin' | 'supervisor' | 'promotor'
 
@@ -13,6 +14,15 @@ export type CheckInStatus = 'a_tiempo' | 'retrasado' | 'anticipado' | 'ubicacion
 export type TimeOffType = 'vacaciones' | 'aviva_day' | 'incapacidad'
 
 export type RequestStatus = 'pending' | 'approved' | 'rejected'
+
+// ================= PRODUCT TYPES =================
+export interface Product {
+  id: string        // internal key, e.g. "BA", "Aviva_Contigo"
+  name: string      // display name, e.g. "Bodega Aurrera"
+  status: 'active' | 'inactive'
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
 
 // ================= HUB TYPES (NUEVO) =================
 export interface Hub {
