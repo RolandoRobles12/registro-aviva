@@ -7,67 +7,46 @@ import { ProductService } from '../services/products';
 // =================== PRODUCTS HOOK ===================
 
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../config/firebase';
+import { db } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
 
 export function useProducts() {
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let unsubscribeFirestore: (() => void) | null = null;
+    // user from AuthContext is set only after getCurrentUserDocument() succeeds,
+    // which means Firestore SDK already has a working auth token at this point.
+    if (!user) {
+      setProducts([]);
+      setLoading(false);
+      return;
+    }
 
-    // Use the app's own auth instance (not getAuth()) to avoid instance mismatch.
-    // Only subscribe to Firestore once auth state is confirmed.
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      // Cancel any previous Firestore subscription before setting up a new one
-      unsubscribeFirestore?.();
-      unsubscribeFirestore = null;
+    const q = query(
+      collection(db, 'products'),
+      where('status', '==', 'active')
+    );
 
-      if (!firebaseUser) {
-        setProducts([]);
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        setProducts(
+          snap.docs
+            .map(d => ({ id: d.id, ...d.data() } as Product))
+            .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+        );
         setLoading(false);
-        return;
-      }
-
-      // Force token fetch so Firestore SDK has the token before the
-      // first snapshot request — prevents the race condition where
-      // onAuthStateChanged fires before the token is in the SDK cache.
-      try {
-        await firebaseUser.getIdToken();
-      } catch (e) {
-        console.error('useProducts: failed to get auth token', e);
+      },
+      (err) => {
+        console.error('useProducts error:', err);
         setLoading(false);
-        return;
       }
+    );
 
-      const q = query(
-        collection(db, 'products'),
-        where('status', '==', 'active')
-      );
-
-      unsubscribeFirestore = onSnapshot(
-        q,
-        (snap) => {
-          setProducts(
-            snap.docs
-              .map(d => ({ id: d.id, ...d.data() } as Product))
-              .sort((a, b) => a.name.localeCompare(b.name, 'es'))
-          );
-          setLoading(false);
-        },
-        (err) => {
-          console.error('useProducts error:', err);
-          setLoading(false);
-        }
-      );
-    });
-
-    return () => {
-      unsubscribeAuth();
-      unsubscribeFirestore?.();
-    };
-  }, []);
+    return () => unsubscribe();
+  }, [user?.id]);
 
   const productOptions = products.map(p => ({ value: p.id, label: p.name }));
 
