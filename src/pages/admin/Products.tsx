@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
@@ -38,7 +38,7 @@ export default function AdminProducts() {
     }
 
     const unsub = onSnapshot(
-      collection(db, 'products'),
+      query(collection(db, 'products'), where('status', 'in', ['active', 'inactive'])),
       (snap) => {
         setAllProducts(
           snap.docs
