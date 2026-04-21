@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../../config/firebase';
+import { db } from '../../config/firebase';
+import { useAuth } from '../../contexts/AuthContext';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
 import { Product } from '../../types';
 import { ProductService } from '../../services/products';
@@ -15,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function AdminProducts() {
+  const { user } = useAuth();
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,55 +28,34 @@ export default function AdminProducts() {
   const [saving, setSaving] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
-  // Real-time listener wrapped in onAuthStateChanged so Firestore is
-  // never queried before the auth token is confirmed.
+  // user from AuthContext is set only after getCurrentUserDocument() succeeds,
+  // which means Firestore SDK already has a working auth token at this point.
   useEffect(() => {
-    let unsubFirestore: (() => void) | null = null;
+    if (!user) {
+      setAllProducts([]);
+      setLoading(false);
+      return;
+    }
 
-    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      unsubFirestore?.();
-      unsubFirestore = null;
-
-      if (!firebaseUser) {
-        setAllProducts([]);
+    const unsub = onSnapshot(
+      collection(db, 'products'),
+      (snap) => {
+        setAllProducts(
+          snap.docs
+            .map(d => ({ id: d.id, ...d.data() } as Product))
+            .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+        );
         setLoading(false);
-        return;
-      }
-
-      // Force token fetch so Firestore SDK has the token before the
-      // first snapshot request — prevents the race condition where
-      // onAuthStateChanged fires before the token is in the SDK cache.
-      try {
-        await firebaseUser.getIdToken();
-      } catch (e) {
-        console.error('Products: failed to get auth token', e);
+      },
+      (err) => {
+        console.error('Products onSnapshot error:', err);
+        setError(err.message || 'Error cargando productos');
         setLoading(false);
-        return;
       }
+    );
 
-      unsubFirestore = onSnapshot(
-        collection(db, 'products'),
-        (snap) => {
-          setAllProducts(
-            snap.docs
-              .map(d => ({ id: d.id, ...d.data() } as Product))
-              .sort((a, b) => a.name.localeCompare(b.name, 'es'))
-          );
-          setLoading(false);
-        },
-        (err) => {
-          console.error('Products onSnapshot error:', err);
-          setError(err.message || 'Error cargando productos');
-          setLoading(false);
-        }
-      );
-    });
-
-    return () => {
-      unsubAuth();
-      unsubFirestore?.();
-    };
-  }, []);
+    return () => unsub();
+  }, [user?.id]);
 
   const openCreate = () => {
     setEditingProduct(null);
