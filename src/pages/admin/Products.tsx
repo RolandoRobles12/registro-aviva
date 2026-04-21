@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth, db } from '../../config/firebase';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
 import { Product } from '../../types';
 import { ProductService } from '../../services/products';
-import { useAuth } from '../../contexts/AuthContext';
 import {
   PlusIcon,
   PencilIcon,
@@ -13,7 +15,6 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function AdminProducts() {
-  const { user } = useAuth();
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,20 +27,43 @@ export default function AdminProducts() {
   const [saving, setSaving] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
-  const reload = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      const list = await ProductService.getProducts();
-      setAllProducts(list);
-    } catch (e: any) {
-      setError(e.message || 'Error cargando productos');
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+  // Real-time listener wrapped in onAuthStateChanged so Firestore is
+  // never queried before the auth token is confirmed.
+  useEffect(() => {
+    let unsubFirestore: (() => void) | null = null;
 
-  useEffect(() => { reload(); }, [reload]);
+    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      unsubFirestore?.();
+      unsubFirestore = null;
+
+      if (!firebaseUser) {
+        setAllProducts([]);
+        setLoading(false);
+        return;
+      }
+
+      unsubFirestore = onSnapshot(
+        collection(db, 'products'),
+        (snap) => {
+          setAllProducts(
+            snap.docs
+              .map(d => ({ id: d.id, ...d.data() } as Product))
+              .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+          );
+          setLoading(false);
+        },
+        (err) => {
+          setError(err.message || 'Error cargando productos');
+          setLoading(false);
+        }
+      );
+    });
+
+    return () => {
+      unsubAuth();
+      unsubFirestore?.();
+    };
+  }, []);
 
   const openCreate = () => {
     setEditingProduct(null);
@@ -81,7 +105,6 @@ export default function AdminProducts() {
         showMsg('success', `Producto "${formName}" creado`);
       }
       setShowForm(false);
-      await reload();
     } catch (e: any) {
       setError(e.message || 'Error guardando producto');
     } finally {
@@ -94,7 +117,6 @@ export default function AdminProducts() {
       const next = p.status === 'active' ? 'inactive' : 'active';
       await ProductService.setProductStatus(p.id, next);
       showMsg('success', `Producto "${p.name}" ${next === 'active' ? 'activado' : 'desactivado'}`);
-      await reload();
     } catch (e: any) {
       setError(e.message || 'Error actualizando estado');
     }
@@ -105,7 +127,6 @@ export default function AdminProducts() {
       setSeeding(true);
       const count = await ProductService.seedDefaultProducts();
       showMsg('success', `${count} productos predeterminados cargados`);
-      await reload();
     } catch (e: any) {
       setError(e.message || 'Error cargando productos predeterminados');
     } finally {
