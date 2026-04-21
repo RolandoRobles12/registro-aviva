@@ -19,13 +19,24 @@ export function useProducts() {
 
     // Use the app's own auth instance (not getAuth()) to avoid instance mismatch.
     // Only subscribe to Firestore once auth state is confirmed.
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       // Cancel any previous Firestore subscription before setting up a new one
       unsubscribeFirestore?.();
       unsubscribeFirestore = null;
 
       if (!firebaseUser) {
         setProducts([]);
+        setLoading(false);
+        return;
+      }
+
+      // Force token fetch so Firestore SDK has the token before the
+      // first snapshot request — prevents the race condition where
+      // onAuthStateChanged fires before the token is in the SDK cache.
+      try {
+        await firebaseUser.getIdToken();
+      } catch (e) {
+        console.error('useProducts: failed to get auth token', e);
         setLoading(false);
         return;
       }

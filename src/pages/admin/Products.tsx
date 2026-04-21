@@ -32,12 +32,23 @@ export default function AdminProducts() {
   useEffect(() => {
     let unsubFirestore: (() => void) | null = null;
 
-    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       unsubFirestore?.();
       unsubFirestore = null;
 
       if (!firebaseUser) {
         setAllProducts([]);
+        setLoading(false);
+        return;
+      }
+
+      // Force token fetch so Firestore SDK has the token before the
+      // first snapshot request — prevents the race condition where
+      // onAuthStateChanged fires before the token is in the SDK cache.
+      try {
+        await firebaseUser.getIdToken();
+      } catch (e) {
+        console.error('Products: failed to get auth token', e);
         setLoading(false);
         return;
       }
@@ -53,6 +64,7 @@ export default function AdminProducts() {
           setLoading(false);
         },
         (err) => {
+          console.error('Products onSnapshot error:', err);
           setError(err.message || 'Error cargando productos');
           setLoading(false);
         }
