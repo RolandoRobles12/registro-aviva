@@ -1,173 +1,127 @@
-# Configuración de Credenciales de Google Cloud Vision
+# Credenciales de Google Cloud Vision — Service Account
 
-## Paso 1: Guardar el archivo JSON de Service Account
+## Roles requeridos en IAM
 
-1. Ya tienes el archivo JSON generado desde Google Cloud Console
-2. **IMPORTANTE**: Renombra el archivo a `serviceAccountKey.json`
-3. Coloca el archivo en el directorio `functions/`:
+El Service Account necesita estos roles en el proyecto GCP:
 
-```bash
-mv /ruta/a/tu/archivo-descargado.json /home/user/registro-aviva/functions/serviceAccountKey.json
-```
+| Rol | Propósito |
+|---|---|
+| `Cloud Vision AI Service Agent` | Llamadas a Vision API |
+| `Storage Object Viewer` | Leer imágenes de Firebase Storage |
+| `Firebase Admin` (opcional) | Operaciones admin completas |
 
-**NUNCA subas este archivo al repositorio Git** - Ya está protegido en `.gitignore`
+Verificar en: `console.cloud.google.com/iam-admin/iam` → buscar el SA con formato `nombre@<project-id>.iam.gserviceaccount.com`.
 
 ---
 
-## Paso 2: Configurar las credenciales en Firebase Functions
+## Obtener el archivo JSON
 
-Tienes **3 opciones** para configurar las credenciales:
+1. GCP Console → IAM & Admin → Service Accounts
+2. Seleccionar el SA con los roles anteriores (o crear uno nuevo)
+3. Keys → Add Key → Create new key → JSON
+4. Descargar y renombrar a `serviceAccountKey.json`
 
-### 🟢 OPCIÓN 1: Usar variable de entorno local (DESARROLLO)
+El archivo ya está en `.gitignore`. **No comitas este archivo en ningún caso.**
 
-Para pruebas locales:
+---
+
+## Opciones de configuración
+
+### Opción 1 — Archivo local (desarrollo)
+
+Colocar el JSON en `functions/`:
 
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS="/home/user/registro-aviva/functions/serviceAccountKey.json"
+mv ~/Downloads/<credentials>.json functions/serviceAccountKey.json
 ```
 
-### 🟢 OPCIÓN 2: Usar Firebase Secrets (PRODUCCIÓN - RECOMENDADO)
+`functions/src/photoValidation.ts` lo carga con `require('../serviceAccountKey.json')`. Funciona para desarrollo local y con emuladores.
 
-Esta es la forma más segura para producción:
+**No apto para producción** — el archivo se incluiría en el bundle desplegado.
 
-1. Instalar Firebase CLI (si no lo tienes):
+---
+
+### Opción 2 — Firebase Secrets (producción, recomendado)
+
+Almacena las credenciales cifradas en Secret Manager, inaccesibles desde el código fuente.
+
 ```bash
-npm install -g firebase-tools
-firebase login
+# Convertir JSON a base64 (una sola línea)
+cat functions/serviceAccountKey.json | base64 -w 0 > /tmp/creds_b64.txt
+
+# Crear secret
+firebase functions:secrets:set GOOGLE_CREDENTIALS < /tmp/creds_b64.txt
+
+# Verificar
+firebase functions:secrets:access GOOGLE_CREDENTIALS
 ```
 
-2. Convertir el archivo JSON a base64:
-```bash
-cat functions/serviceAccountKey.json | base64 -w 0 > /tmp/credentials_base64.txt
-```
+Actualizar `functions/src/index.ts` para consumirlo:
 
-3. Crear el secret en Firebase:
-```bash
-firebase functions:secrets:set GOOGLE_CREDENTIALS < /tmp/credentials_base64.txt
-```
-
-4. Actualizar `functions/src/index.ts` para usar el secret:
 ```typescript
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 
-// Inicializar Firebase Admin
 admin.initializeApp();
 
-// Configurar Vision API con credenciales del secret
-const credentials = functions.config().google?.credentials
-  ? JSON.parse(Buffer.from(functions.config().google.credentials, 'base64').toString())
-  : undefined;
-
-if (credentials) {
-  process.env.GOOGLE_APPLICATION_CREDENTIALS = JSON.stringify(credentials);
+// Decodificar credenciales del secret en runtime
+const rawSecret = process.env.GOOGLE_CREDENTIALS;
+if (rawSecret) {
+  const credentials = JSON.parse(Buffer.from(rawSecret, 'base64').toString('utf8'));
+  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON = JSON.stringify(credentials);
 }
 ```
 
-5. Desplegar las functions con el secret:
+Deploy con secrets:
 ```bash
 firebase deploy --only functions --force
 ```
 
-### 🟢 OPCIÓN 3: Configuración automática en el código (SIMPLE)
-
-Esta opción funciona si el archivo `serviceAccountKey.json` está en el directorio `functions/`:
-
-Actualizar `functions/src/photoValidation.ts`:
-
-```typescript
-import { ImageAnnotatorClient } from '@google-cloud/vision';
-import { File } from '@google-cloud/storage';
-import * as path from 'path';
-
-// Configurar credenciales explícitamente
-const credentials = require(path.join(__dirname, '../serviceAccountKey.json'));
-
-const visionClient = new ImageAnnotatorClient({
-  credentials: credentials,
-});
-```
-
-**IMPORTANTE**: Esta opción solo funciona si despliegas el archivo junto con las functions (no recomendado para producción).
-
 ---
 
-## Paso 3: Verificar configuración de permisos en Google Cloud
-
-Asegúrate de que tu Service Account tenga estos roles:
-
-1. Ve a [Google Cloud Console](https://console.cloud.google.com/iam-admin/iam)
-2. Busca tu service account (formato: `nombre@proyecto.iam.gserviceaccount.com`)
-3. Verifica que tenga estos permisos:
-   - ✅ **Cloud Vision AI Service Agent**
-   - ✅ **Storage Object Viewer** (para leer fotos de Firebase Storage)
-   - ✅ **Firebase Admin** (opcional, para operaciones completas)
-
----
-
-## Paso 4: Habilitar Google Cloud Vision API
-
-1. Ve a [Google Cloud Console - APIs](https://console.cloud.google.com/apis/library)
-2. Busca "Cloud Vision API"
-3. Haz clic en "Enable" (Habilitar)
-4. Configura billing si es necesario (tiene tier gratuito de 1,000 imágenes/mes)
-
----
-
-## Paso 5: Desplegar las Functions
+### Opción 3 — Variable de entorno (CI/CD o entornos efímeros)
 
 ```bash
-cd functions
-npm install
-cd ..
-firebase deploy --only functions
+export GOOGLE_APPLICATION_CREDENTIALS="/abs/path/to/serviceAccountKey.json"
+firebase emulators:start
 ```
+
+Útil en pipelines de CI donde el archivo se inyecta como artifact de build.
 
 ---
 
-## Verificar que funciona
-
-Después de desplegar, verifica los logs:
+## Verificar autenticación tras el deploy
 
 ```bash
 firebase functions:log
 ```
 
-Deberías ver logs como:
+Logs esperados al procesar una foto:
 ```
 Procesando validación de foto: attendance-photos/2025/12/...
-Validación de foto completada: { checkInId: '...', status: 'auto_approved', confidence: 0.85 }
+Validación completada: { checkInId: '...', status: 'auto_approved', confidence: 0.85 }
 ```
 
----
+Errores de autenticación típicos:
 
-## Troubleshooting
-
-### Error: "Cannot find module 'serviceAccountKey.json'"
-- Verifica que el archivo esté en `functions/serviceAccountKey.json`
-- Verifica que el nombre del archivo sea exacto (sin espacios ni mayúsculas)
-
-### Error: "Permission denied"
-- Verifica que el Service Account tenga los roles correctos en IAM
-- Verifica que Cloud Vision API esté habilitada
-- Verifica que billing esté configurado en Google Cloud
-
-### Error: "GOOGLE_APPLICATION_CREDENTIALS not set"
-- Usa la Opción 2 (Firebase Secrets) para producción
-- Usa la Opción 3 (credenciales en código) para desarrollo local
+| Error | Causa | Solución |
+|---|---|---|
+| `Cannot find module 'serviceAccountKey.json'` | Archivo no copiado a `functions/` | Opción 1: copiar el JSON |
+| `GOOGLE_APPLICATION_CREDENTIALS not set` | Variable de entorno ausente | Opción 2 (Secrets) o Opción 3 (env var) |
+| `Permission denied` | SA sin roles correctos | Revisar IAM en GCP Console |
+| `Cloud Vision API not enabled` | API deshabilitada | Habilitar en APIs & Services → Library |
 
 ---
 
-## ⚠️ Seguridad
+## Rotación de credenciales
 
-**NUNCA HAGAS ESTO:**
-- ❌ Subir `serviceAccountKey.json` al repositorio
-- ❌ Compartir el archivo JSON por email o chat
-- ❌ Hardcodear las credenciales en el código
+- Rotar el Service Account key cada 90 días como mínimo.
+- Usar SA distintos para entornos dev y prod.
+- Al rotar: crear nueva key → actualizar secret con `firebase functions:secrets:set` → eliminar key antigua en GCP.
 
-**SIEMPRE HAZ ESTO:**
-- ✅ Usar Firebase Secrets para producción
-- ✅ Mantener el archivo en `.gitignore`
-- ✅ Rotar las credenciales cada 90 días
-- ✅ Usar diferentes service accounts para dev/prod
+```bash
+# Actualizar secret con nueva key
+cat new_serviceAccountKey.json | base64 -w 0 | firebase functions:secrets:set GOOGLE_CREDENTIALS
+firebase deploy --only functions --force
+```

@@ -1,147 +1,127 @@
-# 📸 Configuración de Google Cloud Vision API
+# Google Cloud Vision API — Setup y Configuración
 
-Esta guía te ayudará a configurar Google Cloud Vision API para validar automáticamente las fotos de check-in.
+## Prerrequisitos
 
-## 📋 Requisitos Previos
-
-- Proyecto de Firebase activo
-- Cuenta de Google Cloud
-- Node.js 18 o superior
-- Firebase CLI instalado (`npm install -g firebase-tools`)
+- Proyecto Firebase activo (mismo proyecto en GCP)
+- Billing habilitado en la cuenta GCP (requerido por Vision API aunque exista free tier)
+- Node.js 18, Firebase CLI >= 12
 
 ---
 
-## 🚀 Paso 1: Habilitar Google Cloud Vision API
+## 1. Habilitar Cloud Vision API
 
-### 1.1 Ir a Google Cloud Console
+```
+GCP Console → APIs & Services → Library → buscar "Cloud Vision API" → Enable
+```
 
-1. Ve a [Google Cloud Console](https://console.cloud.google.com/)
-2. Selecciona tu proyecto de Firebase (mismo proyecto que usas para Firestore/Storage)
+Verificar que esté activa:
+```
+GCP Console → APIs & Services → Enabled APIs & services → "Cloud Vision API"
+```
 
-### 1.2 Habilitar Vision API
-
-1. En el menú lateral, ve a **"APIs & Services" → "Library"**
-2. Busca **"Cloud Vision API"**
-3. Haz clic en **"Enable"** (Habilitar)
-
-![Vision API Enable](https://cloud.google.com/vision/docs/images/enable-vision-api.png)
-
-### 1.3 Verificar que está habilitada
-
-1. Ve a **"APIs & Services" → "Enabled APIs & services"**
-2. Deberías ver **"Cloud Vision API"** en la lista
+O via CLI:
+```bash
+gcloud services enable vision.googleapis.com --project=<project-id>
+```
 
 ---
 
-## 💳 Paso 2: Configurar Facturación
+## 2. Billing
 
-Google Vision API requiere una cuenta de facturación, pero tiene capa gratuita.
+La API requiere una cuenta de facturación activa. El free tier cubre las primeras 1,000 imágenes/mes.
 
-### 2.1 Plan Gratuito
+| Imágenes/mes | Costo Vision API |
+|---|---|
+| 0 – 1,000 | $0 (free tier) |
+| 1,001 – 5,000,000 | $1.50 / 1,000 imágenes |
 
-- **Primeras 1,000 imágenes/mes**: GRATIS
-- **Después**: $1.50 USD por cada 1,000 imágenes
+Estimación según volumen de check-ins:
 
-### 2.2 Configurar cuenta de facturación
+| Check-ins/mes | Costo aprox. |
+|---|---|
+| ≤ 1,000 | $0 |
+| 5,000 | ~$6 USD |
+| 10,000 | ~$13.50 USD |
+| 20,000 | ~$28.50 USD |
 
-1. En Google Cloud Console, ve a **"Billing"**
-2. Sigue los pasos para agregar una tarjeta de crédito/débito
-3. **Nota**: No te cobrarán hasta que superes las 1,000 imágenes gratuitas
+Configurar alertas de presupuesto:
+```
+GCP Console → Billing → Budgets & alerts → Create Budget
+```
+
+Monitorear requests y cuota:
+```
+GCP Console → APIs & Services → Dashboard → Cloud Vision API → Metrics
+```
 
 ---
 
-## ⚙️ Paso 3: Instalar Dependencias de Firebase Functions
-
-### 3.1 Navegar a carpeta de Functions
+## 3. Dependencias de Cloud Functions
 
 ```bash
 cd functions
-```
-
-### 3.2 Instalar dependencias
-
-```bash
 npm install
 ```
 
-Esto instalará:
-- `@google-cloud/vision` - Cliente de Vision API
-- `firebase-admin` - SDK de Firebase Admin
-- `firebase-functions` - Framework de Cloud Functions
+Paquetes relevantes (`functions/package.json`):
 
----
-
-## 🔑 Paso 4: Configurar Credenciales (Automático con Firebase)
-
-**¡Buenas noticias!** Si usas Firebase Functions, la autenticación con Google Cloud es **automática**.
-
-Firebase Functions ya tiene permisos para usar Vision API en el mismo proyecto.
-
-**No necesitas**:
-- ❌ Descargar archivos JSON de credenciales
-- ❌ Configurar variables de entorno
-- ❌ Service accounts adicionales
-
----
-
-## 🏗️ Paso 5: Build y Deploy de Functions
-
-### 5.1 Build del código TypeScript
-
-Desde la carpeta `functions/`:
-
-```bash
-npm run build
+```json
+{
+  "dependencies": {
+    "@google-cloud/vision": "^4.0.2",
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^5.0.0"
+  }
+}
 ```
 
-### 5.2 Deploy de Functions
+---
 
-Desde la raíz del proyecto:
+## 4. Autenticación
+
+Si las Cloud Functions corren en el mismo proyecto GCP que Firebase, el Service Account por defecto ya tiene permisos para usar Vision API en ese proyecto — no se necesita configuración adicional de credenciales en la mayoría de los casos.
+
+Si se usa un proyecto GCP separado o un Service Account específico, ver [GOOGLE_CLOUD_CREDENTIALS.md](GOOGLE_CLOUD_CREDENTIALS.md).
+
+---
+
+## 5. Build y Deploy
 
 ```bash
+# Desde la raíz del proyecto
 firebase deploy --only functions
 ```
 
-Esto desplegará dos funciones:
-1. **`validatePhotoOnUpload`** - Valida automáticamente cuando se sube una foto
-2. **`manualPhotoReview`** - Permite a supervisores aprobar/rechazar manualmente
+El predeploy definido en `firebase.json` ejecuta `tsc` automáticamente antes de cada deploy. No es necesario compilar manualmente.
 
-### 5.3 Verificar Deploy
+Funciones desplegadas:
 
-Deberías ver algo como:
-
-```
-✔  functions[validatePhotoOnUpload(us-central1)] Successful deploy
-✔  functions[manualPhotoReview(us-central1)] Successful deploy
-
-Functions deployed successfully!
-```
+| Función | Runtime | Trigger |
+|---|---|---|
+| `validatePhotoOnUpload` | Node 18 / us-central1 | `storage.object().onFinalize()` — path `attendance-photos/**` |
+| `manualPhotoReview` | Node 18 / us-central1 | HTTPS Callable |
 
 ---
 
-## 🧪 Paso 6: Probar la Validación
+## 6. Testing
 
-### 6.1 Probar con Emuladores (Desarrollo)
-
-Para probar localmente sin gastar cuota:
+### Emuladores (sin consumir cuota de Vision API)
 
 ```bash
-# Terminal 1: Iniciar emuladores
-firebase emulators:start
+# Terminal 1
+firebase emulators:start   # UI en http://localhost:4000
 
-# Terminal 2: En otra terminal, hacer check-in de prueba
-# La función se ejecutará en el emulador
+# Terminal 2
+npm run dev                # App en http://localhost:5173
 ```
 
-### 6.2 Probar en Producción
+Los emuladores emulan Auth, Firestore y Storage. La llamada real a Vision API sigue ocurriendo desde los emuladores a menos que se mockee explícitamente.
 
-1. Abre la app web
-2. Haz un check-in y sube una foto
-3. Ve a Firebase Console → Firestore
-4. Busca el documento del check-in
-5. Deberías ver el campo `photoValidation` con los resultados
+### Validación end-to-end en producción
 
-Ejemplo de resultado:
+1. Hacer check-in desde la app con una foto
+2. Esperar 5–15 segundos (tiempo de procesamiento de la Cloud Function)
+3. Verificar en Firestore Console → `checkins/{checkInId}` → campo `photoValidation`:
 
 ```json
 {
@@ -169,146 +149,61 @@ Ejemplo de resultado:
 
 ---
 
-## 📊 Paso 7: Monitorear Uso y Costos
+## 7. Personalizar umbrales y etiquetas
 
-### 7.1 Ver logs de Functions
-
-```bash
-firebase functions:log
-```
-
-O en Firebase Console: **Functions → Logs**
-
-### 7.2 Monitorear uso de Vision API
-
-1. Ve a [Google Cloud Console](https://console.cloud.google.com/)
-2. **APIs & Services → Dashboard**
-3. Haz clic en **"Cloud Vision API"**
-4. Ve a la pestaña **"Metrics"**
-
-Aquí verás:
-- Número de requests
-- Cuántas son gratuitas vs pagadas
-- Proyección de costos
-
-### 7.3 Configurar alertas de presupuesto
-
-1. En Google Cloud Console → **Billing → Budgets & alerts**
-2. Crear alerta cuando gastes $5 USD, $10 USD, etc.
-
----
-
-## ⚙️ Paso 8: Personalizar Validación
-
-### 8.1 Ajustar umbrales de confianza
-
-Edita `functions/src/photoValidation.ts`:
+Editar `functions/src/photoValidation.ts`:
 
 ```typescript
 const VALIDATION_CONFIG = {
-  MIN_PERSON_CONFIDENCE: 0.7,     // Bajar si rechaza muchas fotos válidas
-  MIN_UNIFORM_CONFIDENCE: 0.6,    // Ajustar según precisión
-  MIN_LOGO_CONFIDENCE: 0.5,       // Muy bajo si no tienes logos claros
-  AUTO_APPROVE_THRESHOLD: 0.85,   // Subir para ser más estricto
-  AUTO_REJECT_THRESHOLD: 0.3,     // Bajar para enviar más a revisión manual
-  // ...
+  MIN_PERSON_CONFIDENCE: 0.7,
+  MIN_UNIFORM_CONFIDENCE: 0.6,
+  MIN_LOGO_CONFIDENCE: 0.5,
+  AUTO_APPROVE_THRESHOLD: 0.70,   // ≥ este valor → auto_approved
+  AUTO_REJECT_THRESHOLD: 0.50,    // ≤ este valor → rejected
+  EXPECTED_LOGOS: ['Aviva', 'BA', 'Construrama'],
+  UNIFORM_LABELS: ['Clothing', 'Uniform', 'Green'],
+  LOCATION_LABELS: ['Retail', 'Store', 'Tienda', 'Ferretería', 'Almacén'],
 };
 ```
 
-### 8.2 Agregar logos de tu empresa
-
-```typescript
-EXPECTED_LOGOS: ['Aviva', 'BA', 'Construrama', 'TuLogo'],
-```
-
-### 8.3 Ajustar etiquetas de ubicación
-
-```typescript
-LOCATION_LABELS: ['Retail', 'Store', 'Tienda', 'Ferretería', 'Almacén'],
-```
-
-### 8.4 Re-deploy después de cambios
-
+Re-deploy tras cambios:
 ```bash
-npm run build
 firebase deploy --only functions
 ```
 
 ---
 
-## 🐛 Troubleshooting
+## 8. Monitoreo de logs
 
-### Error: "Vision API is not enabled"
-
-**Solución**: Asegúrate de habilitar Vision API en Google Cloud Console (Paso 1)
-
-### Error: "Billing account not configured"
-
-**Solución**: Agrega una cuenta de facturación en Google Cloud (Paso 2)
-
-### La validación siempre devuelve "needs_review"
-
-**Posibles causas**:
-1. Umbrales muy altos → Bajar `VALIDATION_CONFIG`
-2. Fotos de mala calidad → Pedir fotos más claras
-3. No detecta uniforme → Ajustar `UNIFORM_LABELS`
-
-### Functions no se despliegan
-
-**Solución**:
 ```bash
-# Verificar que estás autenticado
-firebase login
+# Tail en tiempo real
+firebase functions:log --only validatePhotoOnUpload
 
-# Verificar proyecto activo
-firebase use --add
-
-# Intentar de nuevo
-firebase deploy --only functions
+# Últimos N registros
+firebase functions:log --limit 50
 ```
 
----
-
-## 💰 Estimación de Costos
-
-| Check-ins/mes | Imágenes | Costo Google Vision | Costo Total |
-|---------------|----------|---------------------|-------------|
-| 1,000         | 1,000    | **GRATIS**          | $0 USD      |
-| 5,000         | 5,000    | $6 USD              | $6 USD      |
-| 10,000        | 10,000   | $13.50 USD          | $13.50 USD  |
-| 20,000        | 20,000   | $28.50 USD          | $28.50 USD  |
-
-**Nota**: Estos son solo los costos de Vision API. Firebase Functions tiene su propia cuota gratuita (2M invocaciones/mes).
+Desde Firebase Console: Functions → Logs → filtrar por función.
 
 ---
 
-## 📚 Recursos Adicionales
+## Troubleshooting rápido
 
-- [Documentación Cloud Vision API](https://cloud.google.com/vision/docs)
-- [Precios Cloud Vision](https://cloud.google.com/vision/pricing)
+| Error | Solución |
+|---|---|
+| `Vision API is not enabled` | Habilitar en GCP Console (paso 1) |
+| `Billing account not configured` | Agregar billing en GCP Console (paso 2) |
+| `PERMISSION_DENIED` | Verificar roles del SA en IAM |
+| Siempre devuelve `needs_review` | Bajar `AUTO_APPROVE_THRESHOLD` o revisar calidad de fotos |
+| Function no se dispara | Verificar que el path en Storage empiece con `attendance-photos/` |
+
+Ver diagnóstico completo en [TROUBLESHOOTING_VALIDACIONES.md](TROUBLESHOOTING_VALIDACIONES.md).
+
+---
+
+## Referencias
+
+- [Cloud Vision API Docs](https://cloud.google.com/vision/docs)
+- [Cloud Vision Pricing](https://cloud.google.com/vision/pricing)
 - [Firebase Functions Docs](https://firebase.google.com/docs/functions)
-- [Vision API Features](https://cloud.google.com/vision/docs/features-list)
-
----
-
-## ✅ Checklist de Configuración
-
-- [ ] Google Cloud Vision API habilitada
-- [ ] Cuenta de facturación configurada
-- [ ] Dependencias de functions instaladas (`cd functions && npm install`)
-- [ ] Functions desplegadas (`firebase deploy --only functions`)
-- [ ] Prueba con foto real completada
-- [ ] Umbrales de validación ajustados según tus necesidades
-- [ ] Alertas de presupuesto configuradas
-
----
-
-## 🎉 ¡Listo!
-
-Ahora cada vez que un empleado suba una foto de check-in:
-1. ✅ Se valida automáticamente con Vision API
-2. ✅ Se aprueba/rechaza según los criterios configurados
-3. ✅ Los supervisores solo revisan casos dudosos
-4. ✅ Todo queda registrado en Firestore
-
-¿Dudas? Revisa los logs con `firebase functions:log` o contacta soporte.
+- [Vision API Feature List](https://cloud.google.com/vision/docs/features-list)
