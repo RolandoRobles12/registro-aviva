@@ -3,6 +3,7 @@ import { useForm, useProducts } from '../../hooks';
 import { Button, Input, Alert } from '../ui';
 import { Hub, ProductType } from '../../types';
 import { HubService } from '../../services/hubs';
+import { PRODUCT_TYPES } from '../../utils/constants';
 
 interface HubFormProps {
   hub?: Hub | null;
@@ -118,16 +119,16 @@ export function HubForm({ hub, onSave, onCancel }: HubFormProps) {
       {!isEditing && (
         <Alert
           type="info"
-          title="Crear Nuevo Hub"
-          message="Los Hubs agrupan estados geográficos y productos para facilitar la visualización de registros."
+          title="Crear Nueva Región"
+          message="Las Regiones agrupan estados geográficos y productos para facilitar la visualización de registros."
         />
       )}
 
       {/* Basic Information */}
       <div className="space-y-4">
         <Input
-          label="Nombre del Hub"
-          placeholder="Ej: Hub Norte, Hub Centro, Hub Occidente"
+          label="Nombre de la Región"
+          placeholder="Ej: Región Norte, Región Centro, Región Occidente"
           value={values.name || ''}
           onChange={(e) => setValue('name', e.target.value)}
           error={errors.name}
@@ -139,7 +140,7 @@ export function HubForm({ hub, onSave, onCancel }: HubFormProps) {
             Descripción (Opcional)
           </label>
           <textarea
-            placeholder="Descripción breve del hub..."
+            placeholder="Descripción breve de la región..."
             value={values.description || ''}
             onChange={(e) => setValue('description', e.target.value)}
             rows={3}
@@ -346,7 +347,7 @@ export function HubForm({ hub, onSave, onCancel }: HubFormProps) {
           type="submit"
           disabled={isSubmitting}
         >
-          {isSubmitting ? 'Guardando...' : isEditing ? 'Actualizar Hub' : 'Crear Hub'}
+          {isSubmitting ? 'Guardando...' : isEditing ? 'Actualizar Región' : 'Crear Región'}
         </Button>
       </div>
     </form>

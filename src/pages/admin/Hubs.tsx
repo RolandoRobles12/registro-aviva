@@ -40,7 +40,7 @@ export default function Hubs() {
       setHubs(data);
       setError(null);
     } catch (err: any) {
-      setError(err.message || 'Error al cargar los hubs');
+      setError(err.message || 'Error al cargar las regiones');
     } finally {
       setLoading(false);
     }
@@ -61,11 +61,11 @@ export default function Hubs() {
       if (selectedHub) {
         // Update existing hub
         await HubService.updateHub(selectedHub.id, hubData, user?.id || 'system');
-        setSuccess('Hub actualizado exitosamente');
+        setSuccess('Región actualizada exitosamente');
       } else {
         // Create new hub
         await HubService.createHub(hubData as Omit<Hub, 'id' | 'createdAt' | 'updatedAt'>, user?.id || 'system');
-        setSuccess('Hub creado exitosamente');
+        setSuccess('Región creada exitosamente');
       }
 
       setShowForm(false);
@@ -75,7 +75,7 @@ export default function Hubs() {
       // Auto-clear success message
       setTimeout(() => setSuccess(null), 5000);
     } catch (err: any) {
-      setError(err.message || 'Error al guardar el hub');
+      setError(err.message || 'Error al guardar la región');
     }
   };
 
@@ -89,7 +89,7 @@ export default function Hubs() {
 
     try {
       await HubService.deleteHub(hubToDelete.id);
-      setSuccess('Hub eliminado exitosamente');
+      setSuccess('Región eliminada exitosamente');
       setShowDeleteConfirm(false);
       setHubToDelete(null);
       await loadHubs();
@@ -97,7 +97,7 @@ export default function Hubs() {
       // Auto-clear success message
       setTimeout(() => setSuccess(null), 5000);
     } catch (err: any) {
-      setError(err.message || 'Error al eliminar el hub');
+      setError(err.message || 'Error al eliminar la región');
       setShowDeleteConfirm(false);
     }
   };
@@ -105,13 +105,13 @@ export default function Hubs() {
   const handleToggleStatus = async (hub: Hub) => {
     try {
       await HubService.toggleHubStatus(hub.id, user?.id || 'system');
-      setSuccess(`Hub ${hub.status === 'active' ? 'desactivado' : 'activado'} exitosamente`);
+      setSuccess(`Región ${hub.status === 'active' ? 'desactivada' : 'activada'} exitosamente`);
       await loadHubs();
 
       // Auto-clear success message
       setTimeout(() => setSuccess(null), 5000);
     } catch (err: any) {
-      setError(err.message || 'Error al cambiar el estado del hub');
+      setError(err.message || 'Error al cambiar el estado de la región');
     }
   };
 
@@ -122,7 +122,7 @@ export default function Hubs() {
       const stats = await HubService.getHubStats(hub.id);
       setHubStats(stats);
     } catch (err: any) {
-      setError(err.message || 'Error al cargar las estadísticas del hub');
+      setError(err.message || 'Error al cargar las estadísticas de la región');
     }
   };
 
@@ -159,7 +159,7 @@ export default function Hubs() {
         <div className="flex items-center space-x-3">
           <CubeIcon className="h-8 w-8 text-blue-600" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Gestión de Hubs</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Gestión de Regiones</h1>
             <p className="text-sm text-gray-600">
               Organiza tus registros por estados geográficos y productos
             </p>
@@ -167,7 +167,7 @@ export default function Hubs() {
         </div>
         <Button onClick={handleCreateHub}>
           <PlusIcon className="h-5 w-5 mr-2" />
-          Nuevo Hub
+          Nueva Región
         </Button>
       </div>
 
@@ -195,7 +195,7 @@ export default function Hubs() {
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Hubs</p>
+              <p className="text-sm font-medium text-gray-600">Total Regiones</p>
               <p className="text-2xl font-bold text-gray-900">{hubs.length}</p>
             </div>
             <CubeIcon className="h-12 w-12 text-blue-500" />
@@ -205,7 +205,7 @@ export default function Hubs() {
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Hubs Activos</p>
+              <p className="text-sm font-medium text-gray-600">Regiones Activas</p>
               <p className="text-2xl font-bold text-green-600">
                 {hubs.filter(h => h.status === 'active').length}
               </p>
@@ -247,7 +247,7 @@ export default function Hubs() {
             setShowForm(false);
             setSelectedHub(null);
           }}
-          title={selectedHub ? 'Editar Hub' : 'Crear Nuevo Hub'}
+          title={selectedHub ? 'Editar Región' : 'Crear Nueva Región'}
         >
           <HubForm
             hub={selectedHub}
@@ -408,11 +408,11 @@ export default function Hubs() {
             <Alert
               type="warning"
               title="Atención"
-              message="Esta acción no se puede deshacer. Asegúrate de que el hub no tiene kioscos o usuarios asociados."
+              message="Esta acción no se puede deshacer. Asegúrate de que la región no tiene kioscos o usuarios asociados."
             />
 
             <p className="text-sm text-gray-600">
-              ¿Estás seguro de que deseas eliminar el hub <strong>{hubToDelete.name}</strong>?
+              ¿Estás seguro de que deseas eliminar la región <strong>{hubToDelete.name}</strong>?
             </p>
 
             <div className="flex justify-end space-x-3">
@@ -429,7 +429,7 @@ export default function Hubs() {
                 onClick={confirmDelete}
                 className="bg-red-600 hover:bg-red-700"
               >
-                Eliminar Hub
+                Eliminar Región
               </Button>
             </div>
           </div>

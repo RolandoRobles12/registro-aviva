@@ -56,7 +56,7 @@ const navigation = [
     icon: MapPinIcon
   },
   {
-    name: 'Hubs', // NUEVA OPCIÓN - HUBS
+    name: 'Regiones',
     href: '/admin/hubs',
     icon: CubeIcon
   },
