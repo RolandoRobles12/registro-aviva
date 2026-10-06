@@ -10,8 +10,10 @@ import {
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, googleProvider, db } from '../config/firebase';
 import { User, UserRole } from '../types';
+import { DeletedUsersService } from './deletedUsers';
 
 const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_DOMAIN || 'avivacredito.com';
+const DELETED_USER_MESSAGE = 'Tu acceso fue eliminado. Contacta al administrador para que lo restablezca.';
 
 export class AuthService {
   /**
@@ -149,6 +151,12 @@ export class AuthService {
         return { id: firebaseUser.uid, ...userSnap.data() } as User;
       }
 
+      // Si un admin eliminó a este usuario, no se le vuelve a crear el perfil automáticamente
+      if (await DeletedUsersService.isDeleted(firebaseUser.uid)) {
+        await firebaseSignOut(auth);
+        throw new Error(DELETED_USER_MESSAGE);
+      }
+
       console.log('Creating new user document');
       
       // Create new user document
@@ -207,6 +215,16 @@ export class AuthService {
         }
 
         const user = await this.getCurrentUserDocument();
+        if (!user) {
+          // Perfil inexistente: si fue eliminado por un admin, cerrar la sesión de Firebase
+          try {
+            if (await DeletedUsersService.isDeleted(firebaseUser.uid)) {
+              await firebaseSignOut(auth);
+            }
+          } catch (error) {
+            console.error('Error checking deleted user:', error);
+          }
+        }
         callback(user);
       } else {
         callback(null);
