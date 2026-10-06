@@ -78,6 +78,15 @@ export interface User {
   updatedAt: Timestamp
 }
 
+export interface DeletedUser {
+  id: string // uid de Firebase Auth
+  email: string
+  name: string
+  deletedAt: Timestamp
+  deletedBy: string
+  deletedByEmail?: string
+}
+
 // ================= CHECK-IN TYPES =================
 export interface CheckIn {
   id: string

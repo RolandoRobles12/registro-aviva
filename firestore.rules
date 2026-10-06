@@ -6,10 +6,24 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Helper: check if user is admin
+    function isAdmin() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'super_admin'];
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();
+    }
+
+    // Usuarios eliminados por un admin: bloquean el acceso hasta que un admin los restaure.
+    // Cada usuario puede leer solo su propio registro (el login lo consulta); solo admins escriben.
+    match /deleted_users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
     }
 
     // Check-ins collection

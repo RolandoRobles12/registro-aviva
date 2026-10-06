@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { UsersTable } from '../../components/admin/UsersTable';
 import { UserForm } from '../../components/admin/UserForm';
@@ -7,12 +7,17 @@ import { UserFilters } from '../../components/admin/UserFilters';
 import { ImportSlackIdsModal } from '../../components/admin/ImportSlackIdsModal';
 import { SalesGoalModal } from '../../components/admin/SalesGoalModal';
 import { LoadingSpinner, Alert, Button, Modal } from '../../components/ui';
-import { User, SalesGoal } from '../../types';
+import { User, SalesGoal, DeletedUser } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
+import { DeletedUsersService } from '../../services/deletedUsers';
 import { FirestoreService } from '../../services/firestore';
 import { PlusIcon, UserPlusIcon, ArrowPathIcon, MagnifyingGlassIcon, NoSymbolIcon, TrashIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, ArrowUpTrayIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 import { assignProductTypesFromCheckIns, getUsersWithoutProduct, syncHubIdFromKiosk } from '../../services/userMigration';
 
 export default function AdminUsers() {
+  const { user: currentAdmin } = useAuth();
+  const [deletedUsers, setDeletedUsers] = useState<DeletedUser[]>([]);
+  const [showDeletedPanel, setShowDeletedPanel] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +47,37 @@ export default function AdminUsers() {
     loadUsers();
     checkUsersWithoutProduct();
     loadSalesGoals();
+    loadDeletedUsers();
   }, []);
+
+  const loadDeletedUsers = async () => {
+    try {
+      setDeletedUsers(await DeletedUsersService.list());
+    } catch (error) {
+      console.error('Error loading deleted users:', error);
+    }
+  };
+
+  const handleRestoreAccess = async (deleted: DeletedUser) => {
+    if (!confirm(`¿Restablecer el acceso de ${deleted.email}? Podrá iniciar sesión de nuevo y se le creará un perfil nuevo (rol promotor) que deberás ajustar.`)) {
+      return;
+    }
+    try {
+      await DeletedUsersService.restore(deleted.id);
+      setSuccess(`Acceso restablecido para ${deleted.email}`);
+      await loadDeletedUsers();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error) {
+      console.error('Error restoring user access:', error);
+      setError('Error restableciendo el acceso del usuario');
+    }
+  };
+
+  const deleteUsers = async (targets: User[]) => {
+    if (!currentAdmin) throw new Error('Sesión de administrador no disponible');
+    await DeletedUsersService.deleteUsers(targets, { id: currentAdmin.id, email: currentAdmin.email });
+    await loadDeletedUsers();
+  };
 
   const loadSalesGoals = async () => {
     try {
@@ -146,15 +181,16 @@ export default function AdminUsers() {
   };
 
   const handleUserDelete = async (userId: string) => {
-    if (!confirm('¿Estás seguro de que quieres eliminar este usuario? Esta acción no se puede deshacer.')) {
+    if (!confirm('¿Estás seguro de que quieres eliminar este usuario? Perderá el acceso a la plataforma hasta que un admin lo restablezca.')) {
       return;
     }
 
     try {
-      const userRef = doc(db, 'users', userId);
-      await deleteDoc(userRef);
-      
-      setSuccess('Usuario eliminado correctamente');
+      const target = users.find(u => u.id === userId);
+      if (!target) return;
+      await deleteUsers([target]);
+
+      setSuccess('Usuario eliminado correctamente. No podrá volver a entrar hasta que restablezcas su acceso.');
       await loadUsers();
       setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
@@ -321,11 +357,11 @@ export default function AdminUsers() {
 
   const handleBulkDelete = async () => {
     if (!bulkResults || bulkResults.found.length === 0) return;
-    if (!confirm(`¿Eliminar permanentemente ${bulkResults.found.length} usuario(s)? Esta acción no se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar ${bulkResults.found.length} usuario(s)? Perderán el acceso hasta que un admin lo restablezca.`)) return;
 
     try {
       setBulkProcessing(true);
-      await Promise.all(bulkResults.found.map(u => deleteDoc(doc(db, 'users', u.id))));
+      await deleteUsers(bulkResults.found);
       setSuccess(`${bulkResults.found.length} usuario(s) eliminado(s) correctamente.`);
       setBulkResults(null);
       setBulkEmailInput('');
@@ -520,6 +556,50 @@ export default function AdminUsers() {
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Panel: Usuarios eliminados (acceso bloqueado) */}
+      <div className="bg-white shadow rounded-lg">
+        <button
+          className="w-full flex items-center justify-between px-6 py-4 text-left"
+          onClick={() => setShowDeletedPanel(p => !p)}
+        >
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">
+              Usuarios eliminados ({deletedUsers.length})
+            </h3>
+            <p className="text-sm text-gray-500">Estos usuarios no pueden iniciar sesión hasta que restablezcas su acceso.</p>
+          </div>
+          {showDeletedPanel
+            ? <ChevronUpIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />
+            : <ChevronDownIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />}
+        </button>
+
+        {showDeletedPanel && (
+          <div className="border-t border-gray-200 px-6 py-4">
+            {deletedUsers.length === 0 ? (
+              <p className="text-sm text-gray-500">No hay usuarios eliminados.</p>
+            ) : (
+              <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                {deletedUsers.map(d => (
+                  <div key={d.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                    <div>
+                      <span className="font-medium text-gray-900">{d.name}</span>
+                      <span className="ml-2 text-gray-500">{d.email}</span>
+                      <span className="ml-2 text-xs text-gray-400">
+                        {d.deletedAt?.toDate ? d.deletedAt.toDate().toLocaleDateString('es-MX') : ''}
+                        {d.deletedByEmail ? ` · por ${d.deletedByEmail}` : ''}
+                      </span>
+                    </div>
+                    <Button variant="secondary" onClick={() => handleRestoreAccess(d)}>
+                      Restablecer acceso
+                    </Button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
